@@ -24,12 +24,12 @@ Requirements
 |    | files.                                                                  |           |
 +----+-------------------------------------------------------------------------+-----------+
 | 05 | The system must be able to run computers based on x86 (64bit) and ARMv6 | Mandatory |
-|    | (32bit hf) architectures running linux.                                 |           |
+|    | (32bit hf) architectures running Linux.                                 |           |
 +----+-------------------------------------------------------------------------+-----------+
 
 Technical Specification
 =======================
 
 The system will be written in Rust.
-It will use R-Sync for making the backup.
+It will use the btrfs tools for making the backup.
 Execution of the system will be triggered by systemd.
