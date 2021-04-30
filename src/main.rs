@@ -1,31 +1,8 @@
-use std::collections::HashMap;
 mod custom_error;
 use custom_error::CustomError;
 
-struct Subvolume {
-    id: String,
-    uuid: String,
-}
-
 fn main() {
     println!("Hello, world!");
-}
-
-fn get_mount_points(mounts: &str) -> Result<HashMap<String, String>, CustomError> {
-    let mut hm: HashMap<String, String> = HashMap::new();
-
-    for line in mounts.split("\n").into_iter() {
-        let mut tokens = line.split(" ");
-
-        let mount_point = tokens.nth(1).ok_or("could not find mount point")?;
-
-        if tokens.next().ok_or("could not find filesystem")? == "btrfs" {
-            let subvolid = tokens.next().ok_or("could not find options")?.split(",").into_iter().find(|st| st.starts_with("subvolid=")).ok_or("could not find sub-volume id")?.strip_prefix("subvolid=").ok_or("could not extract sub-volume id")?;
-            hm.insert(subvolid.into(), mount_point.into());
-        }
-    }
-
-    Ok(hm)
 }
 
 /// Extract the snapshots for a given subvolume.
@@ -42,23 +19,20 @@ fn get_snapshots(path: &str, subvolume_list: &str) -> Result<Vec<String>, Custom
     }
 
     let root = String::from("/");
-    let mut sv: Option<Subvolume> = None;
+    let mut sv_uuid: Option<String> = None;
 
     for line in lines.skip(1).into_iter() {
         let tokens: Vec<&str> = line.split_ascii_whitespace().collect();
 
-        match &sv {
+        match &sv_uuid {
             Some(s) => {
-                if tokens[4] == s.uuid {
+                if tokens[4] == s {
                     snapshots.push(root.clone() + tokens[6]);
                 }
             },
             None => {
                 if root.clone() + tokens[6] == path {
-                    sv = Some(Subvolume {
-                        id: tokens[0].into(),
-                        uuid: tokens[5].into(),
-                    });
+                    sv_uuid = Some(tokens[5].into());
                 }
             }
         }
@@ -69,19 +43,6 @@ fn get_snapshots(path: &str, subvolume_list: &str) -> Result<Vec<String>, Custom
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-
-    #[test]
-    fn test_get_mount_points() {
-        let mut exp: HashMap<String, String> = HashMap::new();
-        exp.insert("359".into(), "/".into());
-        exp.insert("256".into(), "/home".into());
-
-        let input = "efivarfs /sys/firmware/efi/efivars efivarfs rw,nosuid,nodev,noexec,relatime 0 0\nnone /sys/fs/bpf bpf rw,nosuid,nodev,noexec,relatime,mode=700 0 0\n/dev/mapper/luks-0f3f6c5e-621a-40d8-8be8-c372eaf2d616 / btrfs rw,seclabel,relatime,compress=zstd:1,ssd,space_cache,subvolid=359,subvol=/root 0 0\nselinuxfs /sys/fs/selinux selinuxfs rw,nosuid,noexec,relatime 0 0\n/dev/mapper/luks-0f3f6c5e-621a-40d8-8be8-c372eaf2d616 /home btrfs rw,seclabel,relatime,compress=zstd:1,ssd,space_cache,subvolid=256,subvol=/home 0 0";
-        let res = crate::get_mount_points(input).unwrap();
-        assert_eq!(exp, res);
-    }
-
     #[test]
     fn test_get_snapshots() {
         let input = r#"ID      gen     parent  top level       parent_uuid     uuid    path
