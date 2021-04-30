@@ -1,21 +1,24 @@
+use std::error::Error;
 mod custom_error;
 use custom_error::CustomError;
 
-fn main() {
+fn main() -> Result<(), Box<dyn Error>>{
     println!("Hello, world!");
+    Ok(())
 }
 
 /// Extract the snapshots for a given subvolume.
 ///
 /// * `path` - path of the subvolume
 /// * `subvolume_list` - output of the commant `sudo btrfs subvolume list -tupq --sort=rootid /`
-fn get_snapshots(path: &str, subvolume_list: &str) -> Result<Vec<String>, CustomError> {
+fn get_snapshots(path: &str, subvolume_list: &str) -> Result<Vec<String>, Box<dyn Error>> {
     let mut snapshots: Vec<String> = Vec::new();
 
     let mut lines = subvolume_list.split("\n");
 
-    if lines.next().ok_or("could not find header line")?.split_ascii_whitespace().collect::<Vec<&str>>() != vec!["ID", "gen", "parent", "top", "level", "parent_uuid", "uuid", "path"] {
-        return Err("unexpected header line".into());
+    if lines.next().ok_or(CustomError::ExtractionError("could not find header line".into()))?
+        .split_ascii_whitespace().collect::<Vec<&str>>() != vec!["ID", "gen", "parent", "top", "level", "parent_uuid", "uuid", "path"] {
+        return Err(Box::new(CustomError::ExtractionError("unexpected header line".into())));
     }
 
     let root = String::from("/");

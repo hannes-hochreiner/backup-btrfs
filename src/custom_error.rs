@@ -1,22 +1,18 @@
-use std::{error::Error, fmt::Display};
+use std::{error::Error, fmt::{Display}};
 
 #[derive(Debug)]
-pub struct CustomError {
-    description: String,
+pub enum CustomError {
+    ExtractionError(String),
 }
 
 impl Error for CustomError {}
 
 impl Display for CustomError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&*self.description)
-    }
-}
-
-impl From<&str> for CustomError {
-    fn from(s: &str) -> Self {
-        CustomError {
-            description: s.into()
+        match &self {
+            CustomError::ExtractionError(s) => {
+                f.write_str(&*s)
+            }
         }
     }
 }
