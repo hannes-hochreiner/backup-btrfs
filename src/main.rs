@@ -1,12 +1,15 @@
-use std::{convert::{TryFrom, TryInto}, env, fs::File};
+use std::{env, fs::File};
 mod custom_error;
-use custom_error::CustomError;
 mod utils;
-use chrono::Duration;
+use chrono::{
+    Utc,
+};
 use utils::{
     create_snapshot,
     get_snapshot_list_local,
     get_snapshots,
+    find_backups_to_be_deleted,
+    delete_snapshot,
 };
 use serde::Deserialize;
 use anyhow::{Result, Context};
@@ -18,7 +21,7 @@ struct Config {
     subvolume_path: String,
     snapshot_path: String,
     snapshot_suffix: String,
-    policy: Vec<CustomDuration>,
+    policy_local: Vec<CustomDuration>,
 }
 
 fn main() -> Result<()>{
@@ -28,7 +31,7 @@ fn main() -> Result<()>{
     let config: Config = serde_json::from_reader(file)?;
 
     // create a new local snapshot
-    // create_snapshot(&config.subvolume_path, &config.snapshot_path, &config.snapshot_suffix)?;
+    create_snapshot(&config.subvolume_path, &config.snapshot_path, &config.snapshot_suffix)?;
 
     // get local snapshots
     let snapshots_local = get_snapshots(&config.subvolume_path, &*get_snapshot_list_local()?)?;
@@ -40,7 +43,10 @@ fn main() -> Result<()>{
     // send remote backup
 
     // review local snapshots
-    
+    for snapshot_path in find_backups_to_be_deleted(&Utc::now().into(), &config.policy_local, &snapshots_local)? {
+        delete_snapshot(&snapshot_path).context(format!("error deleting snapshot \"{}\"", &snapshot_path))?;
+    }
+
     // review remote snapshots
     Ok(())
 }

@@ -1,23 +1,46 @@
-use std::{convert::TryInto, path::{
-        Path,
-        PathBuf,
-    }, process::{Command, Output}};
+use std::{
+    convert::TryInto,
+    path::{Path, PathBuf},
+    process::{Command, Output}
+};
 use chrono::{Utc, SecondsFormat, DateTime, Duration, FixedOffset};
-use crate::custom_error::CustomError;
+use crate::{custom_error::CustomError, custom_duration::CustomDuration};
 use anyhow::{Context, Result};
-use crate::custom_duration::CustomDuration;
+
+/// Delete a snapshot
+///
+/// Executes `btrfs subvolume delete <snapshot_path>`.
+///
+/// * `snapshot_path` - absolute path of the snapshot to be deleted
+///
+pub fn delete_snapshot(snapshot_path: &String) -> Result<()> {
+    let snapshot_path = PathBuf::from(&*snapshot_path);
+
+    check_dir_absolute(snapshot_path.as_path()).context("snapshot_path must be an absolute path to a directory")?;
+
+    let output = Command::new("btrfs")
+        .arg("subvolume")
+        .arg("delete")
+        .arg(snapshot_path)
+        .output().context("running command to obtain subvolume list failed")?;
+
+    check_output(&output).context("output of command to obtain subvolume list contained an error")?;
+
+    Ok(())
+}
 
 /// Obtain the output of the command to create a list of subvolumes
 ///
 /// Returns the output of the command `btrfs subvolume list -tupq --sort=rootid /`.
+///
 pub fn get_snapshot_list_local() -> Result<String> {
     let output = Command::new("btrfs")
-    .arg("subvolume")
-    .arg("list")
-    .arg("-tupq")
-    .arg("--sort=rootid")
-    .arg("/")
-    .output().context("running command to obtain subvolume list failed")?;
+        .arg("subvolume")
+        .arg("list")
+        .arg("-tupq")
+        .arg("--sort=rootid")
+        .arg("/")
+        .output().context("running command to obtain subvolume list failed")?;
 
     let output = check_output(&output).context("output of command to obtain subvolume list contained an error")?;
 
@@ -31,6 +54,7 @@ pub fn get_snapshot_list_local() -> Result<String> {
 /// * `subvolume_path` - absolute path to the subvolume
 /// * `snapshot_path` - absolute path to the snapshot directory
 /// * `snapshot_suffix` - string to be appended to identify the snapshot
+///
 pub fn create_snapshot(subvolume_path: &String, snapshot_path: &String, snapshot_suffix: &String) -> Result<()> {
     let snapshot_path_extension = format!("{}_{}", Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true), snapshot_suffix);
     let mut snapshot_path = PathBuf::from(&*snapshot_path);
@@ -42,12 +66,12 @@ pub fn create_snapshot(subvolume_path: &String, snapshot_path: &String, snapshot
     snapshot_path.push(snapshot_path_extension);
 
     let output = Command::new("btrfs")
-            .arg("subvolume")
-            .arg("snapshot")
-            .arg("-r")
-            .arg(subvolume_path)
-            .arg(snapshot_path)
-            .output().context("running command to create subvolume failed")?;
+        .arg("subvolume")
+        .arg("snapshot")
+        .arg("-r")
+        .arg(subvolume_path)
+        .arg(snapshot_path)
+        .output().context("running command to create subvolume failed")?;
     
     check_output(&output).context("output of command to create subvolume contained an error")?;
 
@@ -94,6 +118,7 @@ fn check_dir_absolute(path: &Path) -> Result<()> {
 /// * `current_timestamp` - current date and time
 /// * `policy` - a vector of durations ordered from smallest to largest
 /// * `backups` - a vector of backup path names; the last component of the path must follow the format `<rfc3339 date>_<other text>`; the entries must be sorted oldest to newest
+///
 pub fn find_backups_to_be_deleted(current_timestamp: &DateTime<FixedOffset>, policy: &Vec<CustomDuration>, backups: &Vec<String>) -> Result<Vec<String>> {
     let mut bucket_vec: Vec<String> = Vec::new();
     let mut policy_iter = policy.iter();
@@ -110,22 +135,17 @@ pub fn find_backups_to_be_deleted(current_timestamp: &DateTime<FixedOffset>, pol
                 if *current_timestamp - backup_time > pol {
                     if bucket_vec.len() > 0 {
                         bucket_vec.pop();
-                        println!("append to result: {:?}", bucket_vec);
                         res.append(&mut bucket_vec);
-                        println!("append to bucket_vec: {:?}", backup);
                         bucket_vec.push(backup.clone());
                     }
                     
-                    println!("switch policy");
                     policy = policy_iter.next();
                 } else {
-                    println!("append to bucket_vec: {:?}", backup);
                     bucket_vec.push(backup.clone());
                 }
 
             },
             None => {
-                println!("append to bucket_vec: {:?}", backup);
                 bucket_vec.push(backup.clone());
             },
         }
@@ -133,7 +153,6 @@ pub fn find_backups_to_be_deleted(current_timestamp: &DateTime<FixedOffset>, pol
 
     if bucket_vec.len() > 0 {
         bucket_vec.remove(0);
-        println!("append to result: {:?}", bucket_vec);
         res.append(&mut bucket_vec);
     }
 
@@ -144,6 +163,7 @@ pub fn find_backups_to_be_deleted(current_timestamp: &DateTime<FixedOffset>, pol
 ///
 /// * `path` - path of the subvolume
 /// * `subvolume_list` - output of the commant `btrfs subvolume list -tupq --sort=rootid /`
+///
 pub fn get_snapshots(path: &str, subvolume_list: &str) -> Result<Vec<String>> {
     let mut snapshots: Vec<String> = Vec::new();
 
