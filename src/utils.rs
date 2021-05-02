@@ -1,10 +1,7 @@
-use std::{
-    path::{
+use std::{path::{
         Path,
         PathBuf,
-    },
-    process::Command,
-};
+    }, process::{Command, Output}};
 use chrono::{Utc, SecondsFormat, DateTime, Duration, FixedOffset};
 use crate::custom_error::CustomError;
 use anyhow::{Context, Result};
@@ -32,14 +29,23 @@ pub fn create_snapshot(subvolume_path: &String, snapshot_path: &String, snapshot
             .arg("-r")
             .arg(subvolume_path)
             .arg(snapshot_path)
-            .output()?;
+            .output().context("running command to create subvolume failed")?;
     
+    check_output(&output).context("output of command to create subvolume contained an error")?;
+    
+    Ok(())
+}
+
+fn check_output(output: &Output) -> Result<Vec<u8>> {
     match output.status.code() {
         Some(code) => {
             if code == 0 {
-                Ok(())
+                Ok(output.stdout.clone())
             } else {
-                Err(CustomError::CommandError(format!("command finished with status code {}", code)).into())
+                match String::from_utf8(output.stderr.clone()) {
+                    Ok(s) => Err(CustomError::CommandError(format!("command finished with status code {}: {}", code, s)).into()),
+                    Err(_) => Err(CustomError::CommandError(format!("command finished with status code {}", code)).into())
+                }
             }
         },
         None => Err(CustomError::CommandError("command was terminated by signal".into()).into()),
