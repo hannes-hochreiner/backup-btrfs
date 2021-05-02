@@ -3,6 +3,7 @@ use std::{error::Error, fmt::{Display}};
 #[derive(Debug)]
 pub enum CustomError {
     ExtractionError(String),
+    ConfigurationError(String),
 }
 
 impl Error for CustomError {}
@@ -12,7 +13,10 @@ impl Display for CustomError {
         match &self {
             CustomError::ExtractionError(s) => {
                 f.write_str(&*s)
-            }
+            },
+            CustomError::ConfigurationError(s) => {
+                f.write_str(&*s)
+            },
         }
     }
 }
