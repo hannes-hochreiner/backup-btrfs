@@ -1,10 +1,28 @@
-use std::{path::{
+use std::{
+    path::{
         Path,
         PathBuf,
     }, process::{Command, Output}};
 use chrono::{Utc, SecondsFormat, DateTime, Duration, FixedOffset};
 use crate::custom_error::CustomError;
 use anyhow::{Context, Result};
+
+/// Obtain the output of the command to create a list of subvolumes
+///
+/// Returns the output of the command `btrfs subvolume list -tupq --sort=rootid /`.
+pub fn get_snapshot_list_local() -> Result<String> {
+    let output = Command::new("btrfs")
+    .arg("subvolume")
+    .arg("list")
+    .arg("-tupq")
+    .arg("--sort=rootid")
+    .arg("/")
+    .output().context("running command to obtain subvolume list failed")?;
+
+    let output = check_output(&output).context("output of command to obtain subvolume list contained an error")?;
+
+    Ok(String::from_utf8(output).context("error converting output of the command to obtain the list of subvolumens into a string")?)
+}
 
 /// Create a new snapshot
 ///
@@ -32,7 +50,7 @@ pub fn create_snapshot(subvolume_path: &String, snapshot_path: &String, snapshot
             .output().context("running command to create subvolume failed")?;
     
     check_output(&output).context("output of command to create subvolume contained an error")?;
-    
+
     Ok(())
 }
 
@@ -124,7 +142,7 @@ pub fn find_backups_to_be_deleted(current_timestamp: &DateTime<FixedOffset>, pol
 /// Extract the snapshots for a given subvolume.
 ///
 /// * `path` - path of the subvolume
-/// * `subvolume_list` - output of the commant `sudo btrfs subvolume list -tupq --sort=rootid /`
+/// * `subvolume_list` - output of the commant `btrfs subvolume list -tupq --sort=rootid /`
 pub fn get_snapshots(path: &str, subvolume_list: &str) -> Result<Vec<String>> {
     let mut snapshots: Vec<String> = Vec::new();
 
@@ -140,6 +158,10 @@ pub fn get_snapshots(path: &str, subvolume_list: &str) -> Result<Vec<String>> {
 
     for line in lines.skip(1).into_iter() {
         let tokens: Vec<&str> = line.split_ascii_whitespace().collect();
+
+        if tokens.len() != 7 {
+            continue;
+        }
 
         match &sv_uuid {
             Some(s) => {

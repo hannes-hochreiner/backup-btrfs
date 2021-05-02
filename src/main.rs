@@ -1,11 +1,14 @@
-use std::{env, error::Error, fs::File, path::{PathBuf}};
-use std::env::Vars;
-use std::process::Command;
+use std::{
+    env, 
+    fs::File,
+};
 mod custom_error;
-use chrono::{Duration, SecondsFormat, Utc};
-use custom_error::CustomError;
 mod utils;
-use utils::create_snapshot;
+use utils::{
+    create_snapshot,
+    get_snapshot_list_local,
+    get_snapshots,
+};
 use serde::Deserialize;
 use anyhow::{Result, Context};
 
@@ -26,6 +29,7 @@ fn main() -> Result<()>{
     create_snapshot(&config.subvolume_path, &config.snapshot_path, &config.snapshot_suffix)?;
 
     // get local snapshots
+    let snapshots_local = get_snapshots(&config.subvolume_path, &*get_snapshot_list_local()?)?;
 
     // get remote snapshots
 
