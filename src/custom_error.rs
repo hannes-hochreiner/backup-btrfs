@@ -4,6 +4,7 @@ use std::{error::Error, fmt::{Display}};
 pub enum CustomError {
     ExtractionError(String),
     ConfigurationError(String),
+    CommandError(String),
 }
 
 impl Error for CustomError {}
@@ -15,6 +16,9 @@ impl Display for CustomError {
                 f.write_str(&*s)
             },
             CustomError::ConfigurationError(s) => {
+                f.write_str(&*s)
+            },
+            CustomError::CommandError(s) => {
                 f.write_str(&*s)
             },
         }

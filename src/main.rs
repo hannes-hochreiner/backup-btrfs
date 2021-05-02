@@ -5,6 +5,7 @@ mod custom_error;
 use chrono::{Duration, SecondsFormat, Utc};
 use custom_error::CustomError;
 mod utils;
+use utils::create_snapshot;
 use serde::Deserialize;
 use anyhow::{Result, Context};
 
@@ -22,26 +23,7 @@ fn main() -> Result<()>{
     let config: Config = serde_json::from_reader(file)?;
 
     // create a new local snapshot
-    let snapshot_path_extension = format!("{}_{}", Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true), config.snapshot_suffix);
-    let mut snapshot_path = PathBuf::from(&*config.snapshot_path);
-
-    if !snapshot_path.is_dir() {
-        return Err(CustomError::ConfigurationError("snapshot_path must be a directory".into()).into());
-    }
-
-    if !snapshot_path.is_absolute() {
-        return Err(CustomError::ConfigurationError("snapshot_path must be an absolute path".into()).into());
-    }
-
-    snapshot_path.push(snapshot_path_extension);
-
-    Command::new("btrfs")
-            .arg("subvolume")
-            .arg("snapshot")
-            .arg("-r")
-            .arg(config.subvolume_path)
-            .arg(snapshot_path)
-            .output()?;
+    create_snapshot(&config.subvolume_path, &config.snapshot_path, &config.snapshot_suffix)?;
 
     // get local snapshots
 

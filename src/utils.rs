@@ -1,9 +1,62 @@
 use std::{
-    path::Path,
+    path::{
+        Path,
+        PathBuf,
+    },
+    process::Command,
 };
-use chrono::{DateTime, Duration, FixedOffset};
+use chrono::{Utc, SecondsFormat, DateTime, Duration, FixedOffset};
 use crate::custom_error::CustomError;
-use anyhow::Result;
+use anyhow::{Context, Result};
+
+/// Create a new snapshot
+///
+/// A new snapshot of the subvolume `<subvolume_path>` is created at the snapshot path `<snapshot_path>/<rfc3339 UTC date>_<snapshot_suffix>` is created.
+///
+/// * `subvolume_path` - absolute path to the subvolume
+/// * `snapshot_path` - absolute path to the snapshot directory
+/// * `snapshot_suffix` - string to be appended to identify the snapshot
+pub fn create_snapshot(subvolume_path: &String, snapshot_path: &String, snapshot_suffix: &String) -> Result<()> {
+    let snapshot_path_extension = format!("{}_{}", Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true), snapshot_suffix);
+    let mut snapshot_path = PathBuf::from(&*snapshot_path);
+    let subvolume_path = PathBuf::from(&*subvolume_path);
+
+    check_dir_absolute(subvolume_path.as_path()).context("subvolume_path must be an absolute path to a directory")?;
+    check_dir_absolute(snapshot_path.as_path()).context("snapshot_path must be an absolute path to a directory")?;
+
+    snapshot_path.push(snapshot_path_extension);
+
+    let output = Command::new("btrfs")
+            .arg("subvolume")
+            .arg("snapshot")
+            .arg("-r")
+            .arg(subvolume_path)
+            .arg(snapshot_path)
+            .output()?;
+    
+    match output.status.code() {
+        Some(code) => {
+            if code == 0 {
+                Ok(())
+            } else {
+                Err(CustomError::CommandError(format!("command finished with status code {}", code)).into())
+            }
+        },
+        None => Err(CustomError::CommandError("command was terminated by signal".into()).into()),
+    }
+}
+
+fn check_dir_absolute(path: &Path) -> Result<()> {
+    if !path.is_dir() {
+        return Err(CustomError::ConfigurationError("path is not a directory".into()).into());
+    }
+
+    if !path.is_absolute() {
+        return Err(CustomError::ConfigurationError("path is not an absolute path".into()).into());
+    }
+
+    Ok(())
+}
 
 /// Return a list of backups to be deleted
 ///
