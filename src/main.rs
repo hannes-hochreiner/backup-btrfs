@@ -7,7 +7,7 @@ use chrono::{
 use utils::{
     create_snapshot,
     get_snapshot_list_local,
-    get_snapshots,
+    get_local_snapshots,
     find_backups_to_be_deleted,
     delete_snapshot,
 };
@@ -34,7 +34,7 @@ fn main() -> Result<()>{
     create_snapshot(&config.subvolume_path, &config.snapshot_path, &config.snapshot_suffix)?;
 
     // get local snapshots
-    let snapshots_local = get_snapshots(&config.subvolume_path, &*get_snapshot_list_local()?)?;
+    let snapshots_local = get_local_snapshots(&config.subvolume_path, &*get_snapshot_list_local()?)?;
 
     // get remote snapshots
 
@@ -43,7 +43,7 @@ fn main() -> Result<()>{
     // send remote backup
 
     // review local snapshots
-    for snapshot_path in find_backups_to_be_deleted(&Utc::now().into(), &config.policy_local, &snapshots_local)? {
+    for snapshot_path in find_backups_to_be_deleted(&Utc::now().into(), &config.policy_local, &snapshots_local.iter().map(|e| e.path.clone()).collect())? {
         delete_snapshot(&snapshot_path).context(format!("error deleting snapshot \"{}\"", &snapshot_path))?;
     }
 

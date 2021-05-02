@@ -1,11 +1,22 @@
-use std::{
-    convert::TryInto,
-    path::{Path, PathBuf},
-    process::{Command, Output}
-};
+use std::{convert::TryInto, path::{Path, PathBuf}, process::{Command, Output}, str::FromStr};
 use chrono::{Utc, SecondsFormat, DateTime, Duration, FixedOffset};
+use uuid::Uuid;
 use crate::{custom_error::CustomError, custom_duration::CustomDuration};
 use anyhow::{Context, Result};
+
+#[derive(Debug, PartialEq)]
+pub struct SnapshotLocal {
+    pub path: String,
+    pub uuid: Uuid,
+    pub parent_uuid: Uuid,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct SnapshotRemote {
+    pub path: String,
+    pub uuid: Uuid,
+    pub received_uuid: Uuid
+}
 
 /// Delete a snapshot
 ///
@@ -31,13 +42,13 @@ pub fn delete_snapshot(snapshot_path: &String) -> Result<()> {
 
 /// Obtain the output of the command to create a list of subvolumes
 ///
-/// Returns the output of the command `btrfs subvolume list -tupq --sort=rootid /`.
+/// Returns the output of the command `btrfs subvolume list -tupqR --sort=rootid /`.
 ///
 pub fn get_snapshot_list_local() -> Result<String> {
     let output = Command::new("btrfs")
         .arg("subvolume")
         .arg("list")
-        .arg("-tupq")
+        .arg("-tupqR")
         .arg("--sort=rootid")
         .arg("/")
         .output().context("running command to obtain subvolume list failed")?;
@@ -164,35 +175,46 @@ pub fn find_backups_to_be_deleted(current_timestamp: &DateTime<FixedOffset>, pol
 /// * `path` - path of the subvolume
 /// * `subvolume_list` - output of the commant `btrfs subvolume list -tupq --sort=rootid /`
 ///
-pub fn get_snapshots(path: &str, subvolume_list: &str) -> Result<Vec<String>> {
-    let mut snapshots: Vec<String> = Vec::new();
+pub fn get_local_snapshots(path: &str, subvolume_list: &str) -> Result<Vec<SnapshotLocal>> {
+    let mut snapshots: Vec<SnapshotLocal> = Vec::new();
 
     let mut lines = subvolume_list.split("\n");
 
     if lines.next().ok_or(CustomError::ExtractionError("could not find header line".into()))?
-        .split_ascii_whitespace().collect::<Vec<&str>>() != vec!["ID", "gen", "parent", "top", "level", "parent_uuid", "uuid", "path"] {
+        .split_ascii_whitespace().collect::<Vec<&str>>() != vec!["ID", "gen", "parent", "top", "level", "parent_uuid", "received_uuid", "uuid", "path"] {
         return Err(CustomError::ExtractionError("unexpected header line".into()).into());
     }
 
-    let root = String::from("/");
-    let mut sv_uuid: Option<String> = None;
+    let mut sv_uuid: Option<Uuid> = None;
 
     for line in lines.skip(1).into_iter() {
         let tokens: Vec<&str> = line.split_ascii_whitespace().collect();
 
-        if tokens.len() != 7 {
+        if tokens.len() != 8 {
             continue;
         }
 
+        let subvolume_path = format!("/{}", tokens[7]);
+        let subvolume_uuid = Uuid::from_str(tokens[6])?;
+
         match &sv_uuid {
             Some(s) => {
-                if tokens[4] == s {
-                    snapshots.push(root.clone() + tokens[6]);
+                match Uuid::from_str(tokens[4]) {
+                    Ok(parent_uuid) => {
+                        if parent_uuid == *s {
+                            snapshots.push(SnapshotLocal {
+                                path: subvolume_path,
+                                uuid: subvolume_uuid,
+                                parent_uuid: parent_uuid,
+                            });
+                        }
+                    },
+                    Err(_) => {},
                 }
             },
             None => {
-                if root.clone() + tokens[6] == path {
-                    sv_uuid = Some(tokens[5].into());
+                if subvolume_path == path {
+                    sv_uuid = Some(subvolume_uuid);
                 }
             }
         }
@@ -204,7 +226,8 @@ pub fn get_snapshots(path: &str, subvolume_list: &str) -> Result<Vec<String>> {
 #[cfg(test)]
 mod utils_tests {
     use chrono::{TimeZone, Utc};
-    use crate::CustomDuration;
+    use uuid::Uuid;
+    use crate::{CustomDuration, utils::SnapshotLocal};
     use crate::utils;
 
     #[test]
@@ -257,15 +280,18 @@ mod utils_tests {
 
     #[test]
     fn get_snapshots() {
-        let input = r#"ID      gen     parent  top level       parent_uuid     uuid    path
---      ---     ------  ---------       -----------     ----    ----
-256     112747  5       5               -                                       11eed410-7829-744e-8288-35c21d278f8e    home
-359     112747  5       5               -                                       32c672fa-d3ce-0b4e-8eaa-ab9205f377ca    root
-360     112737  359     359             -                                       5f0b151b-52e4-4445-aa94-d07056733a1f    opt/btrfs_test
-361     107324  359     359             5f0b151b-52e4-4445-aa94-d07056733a1f    8d5c1a34-2c33-c646-8bb6-0723e2c5c356    snapshots/2021-04-29T15:54:00Z_inf_btrfs_test
-362     112737  360     360             -                                       099b9497-11ad-b14b-838a-79e5e7b6084e    opt/btrfs_test/test2
-363     112744  256     256             -                                       d7a747f8-aed0-9846-82d1-7dd2ed38705f    home/test"#;
+        let input = r#"ID      gen     parent  top level       parent_uuid     received_uuid   uuid    path
+--      ---     ------  ---------       -----------     -------------   ----    ----
+256     119496  5       5               -                                       -                                       11eed410-7829-744e-8288-35c21d278f8e    home
+359     119496  5       5               -                                       -                                       32c672fa-d3ce-0b4e-8eaa-ab9205f377ca    root
+360     119446  359     359             -                                       -                                       5f0b151b-52e4-4445-aa94-d07056733a1f    opt/btrfs_test
+367     118687  359     359             5f0b151b-52e4-4445-aa94-d07056733a1f    -                                       7f305e3e-851b-974b-a476-e2f206e7a407    snapshots/2021-05-02T07:40:32Z_inf_btrfs_test
+370     119446  359     359             5f0b151b-52e4-4445-aa94-d07056733a1f    -                                       1bd1da76-b61f-db41-a2d2-c3474a31f38f    snapshots/2021-05-02T13:38:49Z_inf_btrfs_test
+"#;
 
-        assert_eq!(vec!["/snapshots/2021-04-29T15:54:00Z_inf_btrfs_test"], utils::get_snapshots("/opt/btrfs_test", input).unwrap());
+        assert_eq!(vec![
+            SnapshotLocal { path: "/snapshots/2021-05-02T07:40:32Z_inf_btrfs_test".into(), uuid: Uuid::parse_str("7f305e3e-851b-974b-a476-e2f206e7a407").unwrap(), parent_uuid: Uuid::parse_str("5f0b151b-52e4-4445-aa94-d07056733a1f").unwrap() },
+            SnapshotLocal { path: "/snapshots/2021-05-02T13:38:49Z_inf_btrfs_test".into(), uuid: Uuid::parse_str("1bd1da76-b61f-db41-a2d2-c3474a31f38f").unwrap(), parent_uuid: Uuid::parse_str("5f0b151b-52e4-4445-aa94-d07056733a1f").unwrap() },
+        ], utils::get_local_snapshots("/opt/btrfs_test", input).unwrap());
     }
 }
