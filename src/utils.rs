@@ -1,10 +1,10 @@
-use std::{convert::TryInto, path::{Path, PathBuf}, process::{Command, Output}, str::FromStr};
+use std::{collections::HashMap, convert::TryInto, path::{Path, PathBuf}, process::{Command, Output}, str::FromStr};
 use chrono::{Utc, SecondsFormat, DateTime, Duration, FixedOffset};
 use uuid::Uuid;
 use crate::{custom_error::CustomError, custom_duration::CustomDuration};
 use anyhow::{Context, Result};
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct SnapshotLocal {
     pub path: String,
     pub uuid: Uuid,
@@ -56,6 +56,26 @@ pub fn get_snapshot_list_local() -> Result<String> {
     let output = check_output(&output).context("output of command to obtain subvolume list contained an error")?;
 
     Ok(String::from_utf8(output).context("error converting output of the command to obtain the list of subvolumens into a string")?)
+}
+
+/// Obtain the output of the command to create a list of subvolumes from a remote host
+///
+/// Returns the output of the command `sudo <remote_host> "btrfs subvolume list -tupqR --sort=rootid /"`.
+///
+/// * `remote_host` - name of the remote host
+/// * `identity_file_path` - absolute path of the identity file
+///
+pub fn get_snapshot_list_remote(remote_host: &str, remote_user: &str, identity_file_path: &str) -> Result<String> {
+    let output = Command::new("ssh")
+        .arg("-i")
+        .arg(identity_file_path)
+        .arg(format!("{}@{}", remote_user, remote_host))
+        .arg("sudo btrfs subvolume list -tupqR --sort=rootid /")
+        .output().context("running command to obtain subvolume list failed")?;
+
+    let output = check_output(&output).context("output of command to obtain subvolume list from a remote host contained an error")?;
+
+    Ok(String::from_utf8(output).context("error converting output of the command to obtain the list of subvolumens from a remote host into a string")?)
 }
 
 /// Create a new snapshot
@@ -170,7 +190,7 @@ pub fn find_backups_to_be_deleted(current_timestamp: &DateTime<FixedOffset>, pol
     Ok(res)
 }
 
-/// Extract the snapshots for a given subvolume.
+/// Extract the local snapshots for a given subvolume.
 ///
 /// * `path` - path of the subvolume
 /// * `subvolume_list` - output of the commant `btrfs subvolume list -tupq --sort=rootid /`
@@ -223,12 +243,110 @@ pub fn get_local_snapshots(path: &str, subvolume_list: &str) -> Result<Vec<Snaps
     Ok(snapshots)
 }
 
+/// Extract the remote snapshots
+///
+/// * `subvolume_list` - output of the commant `btrfs subvolume list -tupq --sort=rootid /`
+///
+pub fn get_remote_snapshots(subvolume_list: &str) -> Result<Vec<SnapshotRemote>> {
+    let mut snapshots: Vec<SnapshotRemote> = Vec::new();
+
+    let mut lines = subvolume_list.split("\n");
+
+    if lines.next().ok_or(CustomError::ExtractionError("could not find header line".into()))?
+        .split_ascii_whitespace().collect::<Vec<&str>>() != vec!["ID", "gen", "parent", "top", "level", "parent_uuid", "received_uuid", "uuid", "path"] {
+        return Err(CustomError::ExtractionError("unexpected header line".into()).into());
+    }
+
+    for line in lines.skip(1).into_iter() {
+        let tokens: Vec<&str> = line.split_ascii_whitespace().collect();
+
+        if tokens.len() != 8 {
+            continue;
+        }
+
+        let subvolume_path = format!("/{}", tokens[7]);
+        let subvolume_uuid = Uuid::from_str(tokens[6])?;
+
+        match Uuid::from_str(tokens[5]) {
+            Ok(received_uuid) => {
+                snapshots.push(SnapshotRemote {
+                    path: subvolume_path,
+                    uuid: subvolume_uuid,
+                    received_uuid,
+                });
+            },
+            Err(_) => {},
+        }
+    }
+
+    Ok(snapshots)
+}
+
+/// Get the newest snapshot that was used received on the remote host and is still available locally
+///
+/// * `snapshots_local` - list of local snapshots
+/// * `snapshots_remote` - list of remote snapshots
+///
+pub fn get_common_parent(snapshots_local: &Vec<SnapshotLocal>, snapshots_remote: &Vec<SnapshotRemote>) -> Result<Option<SnapshotLocal>> {
+    let mut res: Option<SnapshotLocal> = None;
+    let uuids: HashMap<&Uuid, &SnapshotLocal> = snapshots_local.iter().map(|e| (&e.uuid, e)).collect();
+
+    for r in snapshots_remote {
+        match uuids.get(&r.received_uuid) {
+            Some(&e) => {
+                res = Some(e.clone());
+            },
+            _ => {},
+        }
+    }
+
+    Ok(res)
+}
+
 #[cfg(test)]
 mod utils_tests {
     use chrono::{TimeZone, Utc};
     use uuid::Uuid;
-    use crate::{CustomDuration, utils::SnapshotLocal};
+    use crate::{CustomDuration, utils::{SnapshotLocal, SnapshotRemote}};
     use crate::utils;
+
+    #[test]
+    fn get_common_parent_1() {
+        let sl = vec![
+            SnapshotLocal { path: "/snapshots/2021-05-02T07:40:32Z_inf_btrfs_test".into(), uuid: Uuid::parse_str("7f305e3e-851b-974b-a476-e2f206e7a407").unwrap(), parent_uuid: Uuid::parse_str("5f0b151b-52e4-4445-aa94-d07056733a1f").unwrap() },
+        ];
+        let sr = vec![
+            SnapshotRemote { path: "/test/path".into(), uuid: Uuid::parse_str("11eed410-7829-744e-8288-35c21d278f8e").unwrap(), received_uuid: Uuid::parse_str("7f305e3e-851b-974b-a476-e2f206e7a407").unwrap() },
+        ];
+
+        assert_eq!(Some(SnapshotLocal { path: "/snapshots/2021-05-02T07:40:32Z_inf_btrfs_test".into(), uuid: Uuid::parse_str("7f305e3e-851b-974b-a476-e2f206e7a407").unwrap(), parent_uuid: Uuid::parse_str("5f0b151b-52e4-4445-aa94-d07056733a1f").unwrap() }), utils::get_common_parent(&sl, &sr).unwrap());
+    }
+
+    #[test]
+    fn get_common_parent_2() {
+        let sl = vec![
+            SnapshotLocal { path: "/snapshots/2021-05-02T07:40:32Z_inf_btrfs_test".into(), uuid: Uuid::parse_str("7f305e3e-851b-974b-a476-e2f206e7a408").unwrap(), parent_uuid: Uuid::parse_str("5f0b151b-52e4-4445-aa94-d07056733a1f").unwrap() },
+        ];
+        let sr = vec![
+            SnapshotRemote { path: "/test/path".into(), uuid: Uuid::parse_str("11eed410-7829-744e-8288-35c21d278f8e").unwrap(), received_uuid: Uuid::parse_str("7f305e3e-851b-974b-a476-e2f206e7a407").unwrap() },
+        ];
+
+        assert_eq!(None, utils::get_common_parent(&sl, &sr).unwrap());
+    }
+
+    #[test]
+    fn get_common_parent_3() {
+        let sl = vec![
+            SnapshotLocal { path: "/snapshots/2021-05-02T07:40:32Z_inf_btrfs_test".into(), uuid: Uuid::parse_str("7f305e3e-851b-974b-a476-e2f206e7a408").unwrap(), parent_uuid: Uuid::parse_str("5f0b151b-52e4-4445-aa94-d07056733a1f").unwrap() },
+            SnapshotLocal { path: "/snapshots/2021-05-02T07:40:32Z_inf_btrfs_test".into(), uuid: Uuid::parse_str("7f305e3e-851b-974b-a476-e2f206e7a407").unwrap(), parent_uuid: Uuid::parse_str("5f0b151b-52e4-4445-aa94-d07056733a1f").unwrap() },
+        ];
+        let sr = vec![
+            SnapshotRemote { path: "/test/path".into(), uuid: Uuid::parse_str("11eed410-7829-744e-8288-35c21d278f8e").unwrap(), received_uuid: Uuid::parse_str("7f305e3e-851b-974b-a476-e2f206e7a407").unwrap() },
+            SnapshotRemote { path: "/test/path".into(), uuid: Uuid::parse_str("11eed410-7829-744e-8288-35c21d278f8e").unwrap(), received_uuid: Uuid::parse_str("7f305e3e-851b-974b-a476-e2f206e7a408").unwrap() },
+        ];
+
+        assert_eq!(Some(SnapshotLocal { path: "/snapshots/2021-05-02T07:40:32Z_inf_btrfs_test".into(), uuid: Uuid::parse_str("7f305e3e-851b-974b-a476-e2f206e7a408").unwrap(), parent_uuid: Uuid::parse_str("5f0b151b-52e4-4445-aa94-d07056733a1f").unwrap() }), utils::get_common_parent(&sl, &sr).unwrap());
+    }
 
     #[test]
     fn find_backups_to_be_deleted_1() {

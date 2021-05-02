@@ -10,6 +10,9 @@ use utils::{
     get_local_snapshots,
     find_backups_to_be_deleted,
     delete_snapshot,
+    get_snapshot_list_remote,
+    get_remote_snapshots,
+    get_common_parent,
 };
 use serde::Deserialize;
 use anyhow::{Result, Context};
@@ -22,6 +25,9 @@ struct Config {
     snapshot_path: String,
     snapshot_suffix: String,
     policy_local: Vec<CustomDuration>,
+    remote_host: String,
+    remote_user: String,
+    identity_file_path: String,
 }
 
 fn main() -> Result<()>{
@@ -37,16 +43,18 @@ fn main() -> Result<()>{
     let snapshots_local = get_local_snapshots(&config.subvolume_path, &*get_snapshot_list_local()?)?;
 
     // get remote snapshots
+    let snapshots_remote = get_remote_snapshots(&*get_snapshot_list_remote(&*config.remote_host, &*config.remote_user, &*config.identity_file_path)?)?;
 
     // find common parent
+    let common_parent = get_common_parent(&snapshots_local, &snapshots_remote)?;
 
     // send remote backup
 
-    // review local snapshots
+    // review local snapshots - filter out the most recent snapshot from the deletion list
     for snapshot_path in find_backups_to_be_deleted(&Utc::now().into(), &config.policy_local, &snapshots_local.iter().map(|e| e.path.clone()).collect())? {
         delete_snapshot(&snapshot_path).context(format!("error deleting snapshot \"{}\"", &snapshot_path))?;
     }
 
-    // review remote snapshots
+    // review remote snapshots - filter out the most recent snapshot from the deletion list
     Ok(())
 }
