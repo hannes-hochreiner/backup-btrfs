@@ -5,6 +5,7 @@ pub enum CustomError {
     ExtractionError(String),
     ConfigurationError(String),
     CommandError(String),
+    DurationConversionError,
 }
 
 impl Error for CustomError {}
@@ -21,6 +22,10 @@ impl Display for CustomError {
             CustomError::CommandError(s) => {
                 f.write_str(&*s)
             },
+            CustomError::DurationConversionError => {
+                f.write_str("Duration Conversion Error: overflow")
+            },
         }
     }
 }
+

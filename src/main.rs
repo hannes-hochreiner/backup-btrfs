@@ -1,9 +1,8 @@
-use std::{
-    env, 
-    fs::File,
-};
+use std::{convert::{TryFrom, TryInto}, env, fs::File};
 mod custom_error;
+use custom_error::CustomError;
 mod utils;
+use chrono::Duration;
 use utils::{
     create_snapshot,
     get_snapshot_list_local,
@@ -11,12 +10,15 @@ use utils::{
 };
 use serde::Deserialize;
 use anyhow::{Result, Context};
+mod custom_duration;
+use custom_duration::CustomDuration;
 
 #[derive(Debug, Deserialize)]
 struct Config {
     subvolume_path: String,
     snapshot_path: String,
     snapshot_suffix: String,
+    policy: Vec<CustomDuration>,
 }
 
 fn main() -> Result<()>{
@@ -26,7 +28,7 @@ fn main() -> Result<()>{
     let config: Config = serde_json::from_reader(file)?;
 
     // create a new local snapshot
-    create_snapshot(&config.subvolume_path, &config.snapshot_path, &config.snapshot_suffix)?;
+    // create_snapshot(&config.subvolume_path, &config.snapshot_path, &config.snapshot_suffix)?;
 
     // get local snapshots
     let snapshots_local = get_snapshots(&config.subvolume_path, &*get_snapshot_list_local()?)?;

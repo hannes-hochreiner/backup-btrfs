@@ -1,11 +1,11 @@
-use std::{
-    path::{
+use std::{convert::TryInto, path::{
         Path,
         PathBuf,
     }, process::{Command, Output}};
 use chrono::{Utc, SecondsFormat, DateTime, Duration, FixedOffset};
 use crate::custom_error::CustomError;
 use anyhow::{Context, Result};
+use crate::custom_duration::CustomDuration;
 
 /// Obtain the output of the command to create a list of subvolumes
 ///
@@ -94,7 +94,7 @@ fn check_dir_absolute(path: &Path) -> Result<()> {
 /// * `current_timestamp` - current date and time
 /// * `policy` - a vector of durations ordered from smallest to largest
 /// * `backups` - a vector of backup path names; the last component of the path must follow the format `<rfc3339 date>_<other text>`; the entries must be sorted oldest to newest
-pub fn find_backups_to_be_deleted(current_timestamp: &DateTime<FixedOffset>, policy: &Vec<Duration>, backups: &Vec<String>) -> Result<Vec<String>> {
+pub fn find_backups_to_be_deleted(current_timestamp: &DateTime<FixedOffset>, policy: &Vec<CustomDuration>, backups: &Vec<String>) -> Result<Vec<String>> {
     let mut bucket_vec: Vec<String> = Vec::new();
     let mut policy_iter = policy.iter();
     let mut policy = policy_iter.next();
@@ -102,11 +102,12 @@ pub fn find_backups_to_be_deleted(current_timestamp: &DateTime<FixedOffset>, pol
 
     for backup in backups.iter().rev() {
         match policy {
-            Some(&p) => {
+            Some(p) => {
+                let pol: Duration = p.try_into().context(format!("could not convert custom interval ({:?}) into chrono::interval", p))?;
                 let backup_time = DateTime::parse_from_rfc3339(String::from(Path::new(backup).components().last().ok_or(CustomError::ExtractionError("could not extract last path component".into()))?.as_os_str().to_str().ok_or(CustomError::ExtractionError("could not convert last path component".into()))?)
                     .split("_").nth(0).ok_or(CustomError::ExtractionError("could not find date part of backup name".into()))?)?;
 
-                if *current_timestamp - backup_time > p {
+                if *current_timestamp - backup_time > pol {
                     if bucket_vec.len() > 0 {
                         bucket_vec.pop();
                         println!("append to result: {:?}", bucket_vec);
@@ -182,13 +183,14 @@ pub fn get_snapshots(path: &str, subvolume_list: &str) -> Result<Vec<String>> {
 
 #[cfg(test)]
 mod utils_tests {
-    use chrono::{TimeZone, Utc, Duration};
+    use chrono::{TimeZone, Utc};
+    use crate::CustomDuration;
     use crate::utils;
 
     #[test]
     fn find_backups_to_be_deleted_1() {
         let current = Utc.ymd(2020, 1, 4).and_hms(10, 0, 0);
-        let policy = vec![Duration::minutes(15)];
+        let policy = vec![CustomDuration::minutes(15)];
         let backups = vec![
             String::from("/snapshots/2020-01-02T09:00:00Z_host_subvolume"),
             String::from("/snapshots/2020-01-02T09:30:00Z_host_subvolume"),
@@ -203,7 +205,7 @@ mod utils_tests {
     #[test]
     fn find_backups_to_be_deleted_2() {
         let current = Utc.ymd(2020, 1, 4).and_hms(10, 0, 0);
-        let policy = vec![Duration::days(1), Duration::days(2)];
+        let policy = vec![CustomDuration::days(1), CustomDuration::days(2)];
         let backups = vec![
             String::from("/snapshots/2020-01-02T09:00:00Z_host_subvolume"),
             String::from("/snapshots/2020-01-02T09:30:00Z_host_subvolume"),
@@ -216,7 +218,7 @@ mod utils_tests {
     #[test]
     fn find_backups_to_be_deleted_3() {
         let current = Utc.ymd(2020, 1, 2).and_hms(09, 35, 0);
-        let policy = vec![Duration::minutes(15), Duration::days(1)];
+        let policy = vec![CustomDuration::minutes(15), CustomDuration::days(1)];
         let backups = vec![
             String::from("/snapshots/2019-12-31T09:00:00Z_host_subvolume"),
             String::from("/snapshots/2020-01-01T09:00:00Z_host_subvolume"),
