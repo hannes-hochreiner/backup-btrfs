@@ -1,9 +1,9 @@
 use std::{
     path::Path,
-    error::Error
 };
 use chrono::{DateTime, Duration, FixedOffset};
 use crate::custom_error::CustomError;
+use anyhow::Result;
 
 /// Return a list of backups to be deleted
 ///
@@ -17,7 +17,7 @@ use crate::custom_error::CustomError;
 /// * `current_timestamp` - current date and time
 /// * `policy` - a vector of durations ordered from smallest to largest
 /// * `backups` - a vector of backup path names; the last component of the path must follow the format `<rfc3339 date>_<other text>`; the entries must be sorted oldest to newest
-pub fn find_backups_to_be_deleted(current_timestamp: &DateTime<FixedOffset>, policy: &Vec<Duration>, backups: &Vec<String>) -> Result<Vec<String>, Box<dyn Error>> {
+pub fn find_backups_to_be_deleted(current_timestamp: &DateTime<FixedOffset>, policy: &Vec<Duration>, backups: &Vec<String>) -> Result<Vec<String>> {
     let mut bucket_vec: Vec<String> = Vec::new();
     let mut policy_iter = policy.iter();
     let mut policy = policy_iter.next();
@@ -66,14 +66,14 @@ pub fn find_backups_to_be_deleted(current_timestamp: &DateTime<FixedOffset>, pol
 ///
 /// * `path` - path of the subvolume
 /// * `subvolume_list` - output of the commant `sudo btrfs subvolume list -tupq --sort=rootid /`
-pub fn get_snapshots(path: &str, subvolume_list: &str) -> Result<Vec<String>, Box<dyn Error>> {
+pub fn get_snapshots(path: &str, subvolume_list: &str) -> Result<Vec<String>> {
     let mut snapshots: Vec<String> = Vec::new();
 
     let mut lines = subvolume_list.split("\n");
 
     if lines.next().ok_or(CustomError::ExtractionError("could not find header line".into()))?
         .split_ascii_whitespace().collect::<Vec<&str>>() != vec!["ID", "gen", "parent", "top", "level", "parent_uuid", "uuid", "path"] {
-        return Err(Box::new(CustomError::ExtractionError("unexpected header line".into())));
+        return Err(CustomError::ExtractionError("unexpected header line".into()).into());
     }
 
     let root = String::from("/");
