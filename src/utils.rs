@@ -1,4 +1,4 @@
-use std::{collections::HashMap, convert::TryInto, path::{Path, PathBuf}, process::{Command, Output}, str::FromStr};
+use std::{collections::HashMap, convert::TryInto, path::{Path, PathBuf}, process::{Stdio, Command, Output}, str::FromStr};
 use chrono::{Utc, SecondsFormat, DateTime, Duration, FixedOffset};
 use uuid::Uuid;
 use crate::{custom_error::CustomError, custom_duration::CustomDuration};
@@ -40,6 +40,46 @@ pub fn delete_snapshot(snapshot_path: &String) -> Result<()> {
     Ok(())
 }
 
+/// Send snapshot
+///
+/// * `snapshot` - snapshot to be sent
+/// * `parent_snapshot` - an optional parent snapshot
+/// * `backup_path` - absolute path for backups on the remote host
+/// * `remote_host` - name of the remote host
+/// * `remote_user` - name of the remote user
+/// * `identity_file_path` - absolute path of the identity file
+///
+pub fn send_snapshot(snapshot: &SnapshotLocal, parent_snapshot: &Option<SnapshotLocal>, backup_path: &str, remote_host: &str, remote_user: &str, identity_file_path: &str) -> Result<()> {
+    let mut args = vec!["send"];
+
+    match parent_snapshot {
+        Some(ps) => {
+            args.push("-p");
+            args.push(&*ps.path);
+        },
+        _ => {}
+    }
+
+    args.push(&snapshot.path);
+
+    let cmd_btrfs = Command::new("btrfs")
+        .args(args)
+        .stdout(Stdio::piped())
+        .spawn().context("error running btrfs send command")?;
+
+    let cmd_ssh = Command::new("ssh")
+        .arg("-i")
+        .arg(identity_file_path)
+        .arg(format!("{}@{}", remote_user, remote_host))
+        .arg(format!("sudo btrfs receive \"{}\"", backup_path))
+        .stdin(cmd_btrfs.stdout.ok_or(CustomError::CommandError("could not open stdout".into()))?)
+        .output().context("error running ssh command")?;
+
+    check_output(&cmd_ssh).context("error checking btrfs output")?;
+    
+    Ok(())
+}
+
 /// Obtain the output of the command to create a list of subvolumes
 ///
 /// Returns the output of the command `btrfs subvolume list -tupqR --sort=rootid /`.
@@ -63,6 +103,7 @@ pub fn get_snapshot_list_local() -> Result<String> {
 /// Returns the output of the command `sudo <remote_host> "btrfs subvolume list -tupqR --sort=rootid /"`.
 ///
 /// * `remote_host` - name of the remote host
+/// * `remote_user` - name of the remote user
 /// * `identity_file_path` - absolute path of the identity file
 ///
 pub fn get_snapshot_list_remote(remote_host: &str, remote_user: &str, identity_file_path: &str) -> Result<String> {

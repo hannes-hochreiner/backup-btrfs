@@ -13,11 +13,14 @@ use utils::{
     get_snapshot_list_remote,
     get_remote_snapshots,
     get_common_parent,
+    send_snapshot,
 };
 use serde::Deserialize;
 use anyhow::{Result, Context};
 mod custom_duration;
 use custom_duration::CustomDuration;
+
+use crate::custom_error::CustomError;
 
 #[derive(Debug, Deserialize)]
 struct Config {
@@ -28,6 +31,7 @@ struct Config {
     remote_host: String,
     remote_user: String,
     identity_file_path: String,
+    backup_path: String,
 }
 
 fn main() -> Result<()>{
@@ -47,13 +51,17 @@ fn main() -> Result<()>{
 
     // find common parent
     let common_parent = get_common_parent(&snapshots_local, &snapshots_remote)?;
+    let latest_local_snapshot = snapshots_local.last().ok_or(CustomError::SnapshotError("no snapshot found".into()))?.clone();
 
     // send remote backup
+    send_snapshot(&latest_local_snapshot, &common_parent, &*config.backup_path, &*config.remote_host, &*config.remote_user, &*config.identity_file_path)?;
 
     // review local snapshots - filter out the most recent snapshot from the deletion list
     for snapshot_path in find_backups_to_be_deleted(&Utc::now().into(), &config.policy_local, &snapshots_local.iter().map(|e| e.path.clone()).collect())? {
         delete_snapshot(&snapshot_path).context(format!("error deleting snapshot \"{}\"", &snapshot_path))?;
     }
+
+    // get remote snapshots again
 
     // review remote snapshots - filter out the most recent snapshot from the deletion list
     Ok(())
