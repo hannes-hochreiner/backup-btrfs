@@ -1,7 +1,7 @@
 use std::{collections::HashMap, convert::TryInto, path::{Path, PathBuf}, process::{Stdio, Command, Output}, str::FromStr};
 use chrono::{Utc, SecondsFormat, DateTime, Duration, FixedOffset};
 use uuid::Uuid;
-use crate::{custom_error::CustomError, custom_duration::CustomDuration};
+use crate::{ConfigSsh, custom_duration::CustomDuration, custom_error::CustomError};
 use anyhow::{Context, Result};
 
 #[derive(Debug, PartialEq, Clone)]
@@ -33,9 +33,31 @@ pub fn delete_snapshot(snapshot_path: &String) -> Result<()> {
         .arg("subvolume")
         .arg("delete")
         .arg(snapshot_path)
-        .output().context("running command to obtain subvolume list failed")?;
+        .output().context("running command to delete a snapshot failed")?;
 
-    check_output(&output).context("output of command to obtain subvolume list contained an error")?;
+    check_output(&output).context("output of command to delete a snapshot contained an error")?;
+
+    Ok(())
+}
+
+/// Delete a snapshot on a remote host
+///
+/// * `snapshot_path` - path of the snapshot to be deleted
+/// * `config_ssh` - ssh configuration
+///
+pub fn delete_remote_snapshot(snapshot_path: &String, config_ssh: &ConfigSsh) -> Result<()> {
+    let snapshot_path_buf = PathBuf::from(&*snapshot_path);
+
+    check_dir_absolute(snapshot_path_buf.as_path()).context("snapshot_path must be an absolute path to a directory")?;
+
+    let output = Command::new("ssh")
+        .arg("-i")
+        .arg(&config_ssh.identity_file_path)
+        .arg(format!("{}@{}", config_ssh.remote_user, config_ssh.remote_host))
+        .arg(format!("sudo btrfs subvolume delete \"{}\"", snapshot_path))
+        .output().context("running command to delete a snapshot failed")?;
+
+    check_output(&output).context("output of command to delete a snapshot contained an error")?;
 
     Ok(())
 }
@@ -45,11 +67,9 @@ pub fn delete_snapshot(snapshot_path: &String) -> Result<()> {
 /// * `snapshot` - snapshot to be sent
 /// * `parent_snapshot` - an optional parent snapshot
 /// * `backup_path` - absolute path for backups on the remote host
-/// * `remote_host` - name of the remote host
-/// * `remote_user` - name of the remote user
-/// * `identity_file_path` - absolute path of the identity file
+/// * `config_ssh` - ssh configuration
 ///
-pub fn send_snapshot(snapshot: &SnapshotLocal, parent_snapshot: &Option<SnapshotLocal>, backup_path: &str, remote_host: &str, remote_user: &str, identity_file_path: &str) -> Result<()> {
+pub fn send_snapshot(snapshot: &SnapshotLocal, parent_snapshot: &Option<SnapshotLocal>, backup_path: &str, config_ssh: &ConfigSsh) -> Result<()> {
     let mut args = vec!["send"];
 
     match parent_snapshot {
@@ -69,8 +89,8 @@ pub fn send_snapshot(snapshot: &SnapshotLocal, parent_snapshot: &Option<Snapshot
 
     let cmd_ssh = Command::new("ssh")
         .arg("-i")
-        .arg(identity_file_path)
-        .arg(format!("{}@{}", remote_user, remote_host))
+        .arg(&config_ssh.identity_file_path)
+        .arg(format!("{}@{}", config_ssh.remote_user, config_ssh.remote_host))
         .arg(format!("sudo btrfs receive \"{}\"", backup_path))
         .stdin(cmd_btrfs.stdout.ok_or(CustomError::CommandError("could not open stdout".into()))?)
         .output().context("error running ssh command")?;
@@ -102,15 +122,13 @@ pub fn get_snapshot_list_local() -> Result<String> {
 ///
 /// Returns the output of the command `sudo <remote_host> "btrfs subvolume list -tupqR --sort=rootid /"`.
 ///
-/// * `remote_host` - name of the remote host
-/// * `remote_user` - name of the remote user
-/// * `identity_file_path` - absolute path of the identity file
+/// * `config_ssh` - ssh configuration
 ///
-pub fn get_snapshot_list_remote(remote_host: &str, remote_user: &str, identity_file_path: &str) -> Result<String> {
+pub fn get_snapshot_list_remote(config_ssh: &ConfigSsh) -> Result<String> {
     let output = Command::new("ssh")
         .arg("-i")
-        .arg(identity_file_path)
-        .arg(format!("{}@{}", remote_user, remote_host))
+        .arg(&config_ssh.identity_file_path)
+        .arg(format!("{}@{}", config_ssh.remote_user, config_ssh.remote_host))
         .arg("sudo btrfs subvolume list -tupqR --sort=rootid /")
         .output().context("running command to obtain subvolume list failed")?;
 
