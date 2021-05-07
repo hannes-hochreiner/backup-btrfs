@@ -1,0 +1,13 @@
+<services>
+    <service name="obs_scm">
+        <param name="scm">git</param>
+        <param name="url">git://github.com/hannes-hochreiner/backup-local-rs.git</param>
+        <param name="versionformat">@PARENT_TAG@</param>
+        <param name="versionrewrite-pattern">v(.*)</param>
+        <param name="match-tag">v*</param>
+        <param name="revision">main</param>
+        <param name="extract">backup-local-rs.spec</param>
+    </service>
+    <service name="set_version" mode="buildtime"/>
+    <service name="tar" mode="buildtime"/>
+</services>
