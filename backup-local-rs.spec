@@ -1,10 +1,11 @@
 Name: backup-local-rs
 Summary: Daemon to create local backups.
 License: MIT
-Version: 0.1.0
+Version: 0.1.1
 Release: 1%{?dist}
 Source: %{name}-%{version}.tar
-#BuildRequires: cargo
+BuildRequires: cargo
+BuildRequires: glibc-langpack-en
 
 %description
 
