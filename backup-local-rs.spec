@@ -5,14 +5,14 @@
 %global crate backup-local-rs
 
 Name:           rust-%{crate}
-Version:        0.1.5
+Version:        0.0.0
 Release:        1%{?dist}
 Summary:        Daemon to create local backups.
 
 # Upstream license specification: None
 License:        MIT
 
-Source:         backup-local-rs-0.1.5.tar
+Source:         %{crate}-%{version}.tar
 
 #ExclusiveArch:  %{rust_arches}
 
