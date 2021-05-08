@@ -46,10 +46,6 @@ pub fn delete_snapshot(snapshot_path: &String) -> Result<()> {
 /// * `config_ssh` - ssh configuration
 ///
 pub fn delete_remote_snapshot(snapshot_path: &String, config_ssh: &ConfigSsh) -> Result<()> {
-    let snapshot_path_buf = PathBuf::from(&*snapshot_path);
-
-    check_dir_absolute(snapshot_path_buf.as_path()).context("snapshot_path must be an absolute path to a directory")?;
-
     let output = Command::new("ssh")
         .arg("-i")
         .arg(&config_ssh.identity_file_path)
