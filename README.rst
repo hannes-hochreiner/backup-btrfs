@@ -33,3 +33,14 @@ Technical Specification
 The system will be written in Rust.
 It will use the btrfs tools for making the backup.
 Execution of the system will be triggered by systemd.
+
+Deployment
+==========
+
+The program can be installed via cargo from the GitHub repository.
+
+.. code-block:: bash
+
+  cargo install --git https://github.com/hannes-hochreiner/backup-local-rs
+
+For each release, an rpm package is prepared using `OBS <https://build.opensuse.org/package/show/home:h0h4/backup-local-rs>`_.
