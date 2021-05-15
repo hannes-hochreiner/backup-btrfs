@@ -2,7 +2,7 @@ use std::{collections::HashMap, convert::TryInto, path::{Path, PathBuf}, process
 use chrono::{Utc, SecondsFormat, DateTime, Duration, FixedOffset};
 use uuid::Uuid;
 use crate::{ConfigSsh, custom_duration::CustomDuration, custom_error::CustomError};
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, Error};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct SnapshotLocal {
@@ -452,6 +452,30 @@ mod utils_tests {
         let exp = vec![
             String::from("/snapshots/2020-01-02T09:07:00Z_host_subvolume"),
             String::from("/snapshots/2020-01-02T09:15:00Z_host_subvolume"),
+            String::from("/snapshots/2019-12-31T09:00:00Z_host_subvolume"),
+        ];
+        assert_eq!(exp, utils::find_backups_to_be_deleted(&current.into(), &policy, &backups, &String::from("host_subvolume")).unwrap());
+    }
+
+    #[test]
+    fn find_backups_to_be_deleted_4() {
+        let current = Utc.ymd(2020, 1, 2).and_hms(09, 35, 0);
+        let policy: Vec<CustomDuration> = Vec::new();
+        let backups = vec![
+            String::from("/snapshots/2019-12-31T09:00:00Z_host_subvolume"),
+            String::from("/snapshots/2020-01-01T09:00:00Z_host_subvolume"),
+            String::from("/snapshots/2020-01-02T09:00:00Z_host_subvolume"),
+            String::from("/snapshots/2020-01-02T09:12:00Z_host2_subvolume"),
+            String::from("/snapshots/2020-01-02T09:15:00Z_host_subvolume"),
+            String::from("/snapshots/2020-01-02T09:07:00Z_host_subvolume"),
+            String::from("/snapshots/2020-01-02T09:30:00Z_host_subvolume"),
+        ];
+        let exp = vec![
+            String::from("/snapshots/2020-01-02T09:07:00Z_host_subvolume"),
+            String::from("/snapshots/2020-01-02T09:15:00Z_host_subvolume"),
+            String::from("/snapshots/2020-01-02T09:12:00Z_host2_subvolume"),
+            String::from("/snapshots/2020-01-02T09:00:00Z_host_subvolume"),
+            String::from("/snapshots/2020-01-01T09:00:00Z_host_subvolume"),
             String::from("/snapshots/2019-12-31T09:00:00Z_host_subvolume"),
         ];
         assert_eq!(exp, utils::find_backups_to_be_deleted(&current.into(), &policy, &backups, &String::from("host_subvolume")).unwrap());
