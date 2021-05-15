@@ -205,7 +205,7 @@ fn check_dir_absolute(path: &Path) -> Result<()> {
 /// * `policy` - a vector of durations ordered from smallest to largest
 /// * `backups` - a vector of backup path names; the last component of the path must follow the format `<rfc3339 date>_<other text>`; the entries must be sorted oldest to newest
 ///
-pub fn find_backups_to_be_deleted(current_timestamp: &DateTime<FixedOffset>, policy: &Vec<CustomDuration>, backups: &Vec<String>) -> Result<Vec<String>> {
+pub fn find_backups_to_be_deleted(current_timestamp: &DateTime<FixedOffset>, policy: &Vec<CustomDuration>, backups: &Vec<String>, snapshot_suffix: &String) -> Result<Vec<String>> {
     let mut bucket_vec: Vec<String> = Vec::new();
     let mut policy_iter = policy.iter();
     let mut policy = policy_iter.next();
@@ -215,8 +215,13 @@ pub fn find_backups_to_be_deleted(current_timestamp: &DateTime<FixedOffset>, pol
         match policy {
             Some(p) => {
                 let pol: Duration = p.try_into().context(format!("could not convert custom interval ({:?}) into chrono::interval", p))?;
-                let backup_time = DateTime::parse_from_rfc3339(String::from(Path::new(backup).components().last().ok_or(CustomError::ExtractionError("could not extract last path component".into()))?.as_os_str().to_str().ok_or(CustomError::ExtractionError("could not convert last path component".into()))?)
-                    .split("_").nth(0).ok_or(CustomError::ExtractionError("could not find date part of backup name".into()))?)?;
+                let snapshot_name = String::from(Path::new(backup).components().last().ok_or(CustomError::ExtractionError("could not extract last path component".into()))?.as_os_str().to_str().ok_or(CustomError::ExtractionError("could not convert last path component".into()))?);
+                let mut snapshot_tokens = snapshot_name.split("_");
+                let backup_time = DateTime::parse_from_rfc3339(snapshot_tokens.nth(0).ok_or(CustomError::ExtractionError("could not find date part of backup name".into()))?)?;
+
+                if snapshot_tokens.collect::<Vec<&str>>().join("_") != *snapshot_suffix {
+                    continue;
+                }
 
                 if *current_timestamp - backup_time > pol {
                     if bucket_vec.len() > 0 {
@@ -415,7 +420,7 @@ mod utils_tests {
         let exp = vec![
             String::from("/snapshots/2020-01-02T09:00:00Z_host_subvolume"),
         ];
-        assert_eq!(exp, utils::find_backups_to_be_deleted(&current.into(), &policy, &backups).unwrap());
+        assert_eq!(exp, utils::find_backups_to_be_deleted(&current.into(), &policy, &backups, &String::from("host_subvolume")).unwrap());
     }
 
     #[test]
@@ -428,7 +433,7 @@ mod utils_tests {
             String::from("/snapshots/2020-01-03T09:00:00Z_host_subvolume"),
         ];
         let exp: Vec<String> = Vec::new();
-        assert_eq!(exp, utils::find_backups_to_be_deleted(&current.into(), &policy, &backups).unwrap());
+        assert_eq!(exp, utils::find_backups_to_be_deleted(&current.into(), &policy, &backups, &String::from("host_subvolume")).unwrap());
     }
 
     #[test]
@@ -439,6 +444,7 @@ mod utils_tests {
             String::from("/snapshots/2019-12-31T09:00:00Z_host_subvolume"),
             String::from("/snapshots/2020-01-01T09:00:00Z_host_subvolume"),
             String::from("/snapshots/2020-01-02T09:00:00Z_host_subvolume"),
+            String::from("/snapshots/2020-01-02T09:12:00Z_host2_subvolume"),
             String::from("/snapshots/2020-01-02T09:15:00Z_host_subvolume"),
             String::from("/snapshots/2020-01-02T09:07:00Z_host_subvolume"),
             String::from("/snapshots/2020-01-02T09:30:00Z_host_subvolume"),
@@ -448,7 +454,7 @@ mod utils_tests {
             String::from("/snapshots/2020-01-02T09:15:00Z_host_subvolume"),
             String::from("/snapshots/2019-12-31T09:00:00Z_host_subvolume"),
         ];
-        assert_eq!(exp, utils::find_backups_to_be_deleted(&current.into(), &policy, &backups).unwrap());
+        assert_eq!(exp, utils::find_backups_to_be_deleted(&current.into(), &policy, &backups, &String::from("host_subvolume")).unwrap());
     }
 
     #[test]

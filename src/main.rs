@@ -79,7 +79,7 @@ fn main() -> Result<()>{
 
     // review local snapshots
     let filter_time = Utc::now();
-    let snapshots_delete_local = find_backups_to_be_deleted(&filter_time.into(), &config.policy_local, &snapshots_local.iter().map(|e| e.path.clone()).collect())?;
+    let snapshots_delete_local = find_backups_to_be_deleted(&filter_time.into(), &config.policy_local, &snapshots_local.iter().map(|e| e.path.clone()).collect(), &config.snapshot_suffix)?;
 
     // delete local snapshots - filter out the most recent snapshot
     for snapshot_path in snapshots_delete_local.iter().filter(|&e| *e != latest_local_snapshot.path) {
@@ -91,7 +91,7 @@ fn main() -> Result<()>{
     let snapshots_remote = get_remote_snapshots(&*get_snapshot_list_remote(&config.config_ssh)?)?;
 
     // review remote snapshots
-    let snapshots_delete_remote = find_backups_to_be_deleted(&filter_time.into(), &config.policy_remote, &snapshots_remote.iter().map(|e| e.path.clone()).collect())?;
+    let snapshots_delete_remote = find_backups_to_be_deleted(&filter_time.into(), &config.policy_remote, &snapshots_remote.iter().map(|e| e.path.clone()).collect(), &config.snapshot_suffix)?;
 
     // delete remote snapshots - filter out the most recent snapshot
     let snapshot_remote_common = snapshots_remote.iter().find(|&e| e.received_uuid == latest_local_snapshot.uuid).ok_or(CustomError::SnapshotError("common snapshot not found".into()))?;
