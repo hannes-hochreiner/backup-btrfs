@@ -1,12 +1,13 @@
 use std::{collections::HashMap, convert::TryInto, path::{Path, PathBuf}, process::{Stdio, Command, Output}, str::FromStr};
-use chrono::{Utc, SecondsFormat, DateTime, Duration, FixedOffset};
+use chrono::{DateTime, Duration, FixedOffset, SecondsFormat, Utc};
 use uuid::Uuid;
 use crate::{ConfigSsh, custom_duration::CustomDuration, custom_error::CustomError};
-use anyhow::{Context, Result, Error};
+use anyhow::{Context, Result};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct SnapshotLocal {
     pub path: String,
+    pub timestamp: chrono::DateTime<FixedOffset>,
     pub uuid: Uuid,
     pub parent_uuid: Uuid,
 }
@@ -14,6 +15,7 @@ pub struct SnapshotLocal {
 #[derive(Debug, PartialEq)]
 pub struct SnapshotRemote {
     pub path: String,
+    pub timestamp: chrono::DateTime<FixedOffset>,
     pub uuid: Uuid,
     pub received_uuid: Uuid
 }
@@ -192,6 +194,14 @@ fn check_dir_absolute(path: &Path) -> Result<()> {
     Ok(())
 }
 
+fn get_timestamp_suffix_from_snapshot_path(snapshot_path: &String) -> Result<(chrono::DateTime<FixedOffset>, String)> {
+    let snapshot_name = String::from(Path::new(snapshot_path).components().last().ok_or(CustomError::ExtractionError("could not extract last path component".into()))?.as_os_str().to_str().ok_or(CustomError::ExtractionError("could not convert last path component".into()))?);
+    let mut snapshot_tokens = snapshot_name.split("_");
+    let snapshot_timestamp = DateTime::parse_from_rfc3339(snapshot_tokens.nth(0).ok_or(CustomError::ExtractionError("could not find date part of backup name".into()))?)?;
+
+    Ok((snapshot_timestamp, snapshot_tokens.collect::<Vec<&str>>().join("_")))
+}
+
 /// Return a list of backups to be deleted
 ///
 /// The policy vector is taken to create bucket, where the entries in the vector are the limits.
@@ -215,11 +225,9 @@ pub fn find_backups_to_be_deleted(current_timestamp: &DateTime<FixedOffset>, pol
         match policy {
             Some(p) => {
                 let pol: Duration = p.try_into().context(format!("could not convert custom interval ({:?}) into chrono::interval", p))?;
-                let snapshot_name = String::from(Path::new(backup).components().last().ok_or(CustomError::ExtractionError("could not extract last path component".into()))?.as_os_str().to_str().ok_or(CustomError::ExtractionError("could not convert last path component".into()))?);
-                let mut snapshot_tokens = snapshot_name.split("_");
-                let backup_time = DateTime::parse_from_rfc3339(snapshot_tokens.nth(0).ok_or(CustomError::ExtractionError("could not find date part of backup name".into()))?)?;
+                let (backup_time, backup_suffix) = get_timestamp_suffix_from_snapshot_path(backup).context("error extracting snapshot timestamp and suffix")?;
 
-                if snapshot_tokens.collect::<Vec<&str>>().join("_") != *snapshot_suffix {
+                if backup_suffix != *snapshot_suffix {
                     continue;
                 }
 
@@ -276,14 +284,17 @@ pub fn get_local_snapshots(path: &str, subvolume_list: &str) -> Result<Vec<Snaps
 
         let subvolume_path = format!("/{}", tokens[7]);
         let subvolume_uuid = Uuid::from_str(tokens[6])?;
-
+        
         match &sv_uuid {
             Some(s) => {
                 match Uuid::from_str(tokens[4]) {
                     Ok(parent_uuid) => {
                         if parent_uuid == *s {
+                            let (subvolume_timestamp, _) = get_timestamp_suffix_from_snapshot_path(&subvolume_path).context("error extracting timestamp and suffix from snapshot path")?;
+    
                             snapshots.push(SnapshotLocal {
                                 path: subvolume_path,
+                                timestamp: subvolume_timestamp,
                                 uuid: subvolume_uuid,
                                 parent_uuid: parent_uuid,
                             });
@@ -326,11 +337,14 @@ pub fn get_remote_snapshots(subvolume_list: &str) -> Result<Vec<SnapshotRemote>>
 
         let subvolume_path = format!("/{}", tokens[7]);
         let subvolume_uuid = Uuid::from_str(tokens[6])?;
-
+        
         match Uuid::from_str(tokens[5]) {
             Ok(received_uuid) => {
+                let (subvolume_timestamp, _) = get_timestamp_suffix_from_snapshot_path(&subvolume_path).context("error extracting subvolume timestamp")?;
+
                 snapshots.push(SnapshotRemote {
                     path: subvolume_path,
+                    timestamp: subvolume_timestamp,
                     uuid: subvolume_uuid,
                     received_uuid,
                 });
@@ -373,22 +387,22 @@ mod utils_tests {
     #[test]
     fn get_common_parent_1() {
         let sl = vec![
-            SnapshotLocal { path: "/snapshots/2021-05-02T07:40:32Z_inf_btrfs_test".into(), uuid: Uuid::parse_str("7f305e3e-851b-974b-a476-e2f206e7a407").unwrap(), parent_uuid: Uuid::parse_str("5f0b151b-52e4-4445-aa94-d07056733a1f").unwrap() },
+            SnapshotLocal { path: "/snapshots/2021-05-02T07:40:32Z_inf_btrfs_test".into(), timestamp: Utc.ymd(2021, 5, 2).and_hms(7, 40, 32).into(), uuid: Uuid::parse_str("7f305e3e-851b-974b-a476-e2f206e7a407").unwrap(), parent_uuid: Uuid::parse_str("5f0b151b-52e4-4445-aa94-d07056733a1f").unwrap() },
         ];
         let sr = vec![
-            SnapshotRemote { path: "/test/path".into(), uuid: Uuid::parse_str("11eed410-7829-744e-8288-35c21d278f8e").unwrap(), received_uuid: Uuid::parse_str("7f305e3e-851b-974b-a476-e2f206e7a407").unwrap() },
+            SnapshotRemote { path: "/test/path".into(), timestamp: Utc.ymd(2021, 5, 2).and_hms(7, 40, 32).into(), uuid: Uuid::parse_str("11eed410-7829-744e-8288-35c21d278f8e").unwrap(), received_uuid: Uuid::parse_str("7f305e3e-851b-974b-a476-e2f206e7a407").unwrap() },
         ];
 
-        assert_eq!(Some(SnapshotLocal { path: "/snapshots/2021-05-02T07:40:32Z_inf_btrfs_test".into(), uuid: Uuid::parse_str("7f305e3e-851b-974b-a476-e2f206e7a407").unwrap(), parent_uuid: Uuid::parse_str("5f0b151b-52e4-4445-aa94-d07056733a1f").unwrap() }), utils::get_common_parent(&sl, &sr).unwrap());
+        assert_eq!(Some(SnapshotLocal { path: "/snapshots/2021-05-02T07:40:32Z_inf_btrfs_test".into(), timestamp: Utc.ymd(2021, 5, 2).and_hms(7, 40, 32).into(), uuid: Uuid::parse_str("7f305e3e-851b-974b-a476-e2f206e7a407").unwrap(), parent_uuid: Uuid::parse_str("5f0b151b-52e4-4445-aa94-d07056733a1f").unwrap() }), utils::get_common_parent(&sl, &sr).unwrap());
     }
 
     #[test]
     fn get_common_parent_2() {
         let sl = vec![
-            SnapshotLocal { path: "/snapshots/2021-05-02T07:40:32Z_inf_btrfs_test".into(), uuid: Uuid::parse_str("7f305e3e-851b-974b-a476-e2f206e7a408").unwrap(), parent_uuid: Uuid::parse_str("5f0b151b-52e4-4445-aa94-d07056733a1f").unwrap() },
+            SnapshotLocal { path: "/snapshots/2021-05-02T07:40:32Z_inf_btrfs_test".into(), timestamp: Utc.ymd(2021, 5, 2).and_hms(7, 40, 32).into(), uuid: Uuid::parse_str("7f305e3e-851b-974b-a476-e2f206e7a408").unwrap(), parent_uuid: Uuid::parse_str("5f0b151b-52e4-4445-aa94-d07056733a1f").unwrap() },
         ];
         let sr = vec![
-            SnapshotRemote { path: "/test/path".into(), uuid: Uuid::parse_str("11eed410-7829-744e-8288-35c21d278f8e").unwrap(), received_uuid: Uuid::parse_str("7f305e3e-851b-974b-a476-e2f206e7a407").unwrap() },
+            SnapshotRemote { path: "/test/path".into(), timestamp: Utc.ymd(2021, 5, 2).and_hms(7, 40, 32).into(), uuid: Uuid::parse_str("11eed410-7829-744e-8288-35c21d278f8e").unwrap(), received_uuid: Uuid::parse_str("7f305e3e-851b-974b-a476-e2f206e7a407").unwrap() },
         ];
 
         assert_eq!(None, utils::get_common_parent(&sl, &sr).unwrap());
@@ -397,15 +411,15 @@ mod utils_tests {
     #[test]
     fn get_common_parent_3() {
         let sl = vec![
-            SnapshotLocal { path: "/snapshots/2021-05-02T07:40:32Z_inf_btrfs_test".into(), uuid: Uuid::parse_str("7f305e3e-851b-974b-a476-e2f206e7a408").unwrap(), parent_uuid: Uuid::parse_str("5f0b151b-52e4-4445-aa94-d07056733a1f").unwrap() },
-            SnapshotLocal { path: "/snapshots/2021-05-02T07:40:32Z_inf_btrfs_test".into(), uuid: Uuid::parse_str("7f305e3e-851b-974b-a476-e2f206e7a407").unwrap(), parent_uuid: Uuid::parse_str("5f0b151b-52e4-4445-aa94-d07056733a1f").unwrap() },
+            SnapshotLocal { path: "/snapshots/2021-05-02T07:40:32Z_inf_btrfs_test".into(), timestamp: Utc.ymd(2021, 5, 2).and_hms(7, 40, 32).into(), uuid: Uuid::parse_str("7f305e3e-851b-974b-a476-e2f206e7a408").unwrap(), parent_uuid: Uuid::parse_str("5f0b151b-52e4-4445-aa94-d07056733a1f").unwrap() },
+            SnapshotLocal { path: "/snapshots/2021-05-02T07:40:32Z_inf_btrfs_test".into(), timestamp: Utc.ymd(2021, 5, 2).and_hms(7, 40, 32).into(), uuid: Uuid::parse_str("7f305e3e-851b-974b-a476-e2f206e7a407").unwrap(), parent_uuid: Uuid::parse_str("5f0b151b-52e4-4445-aa94-d07056733a1f").unwrap() },
         ];
         let sr = vec![
-            SnapshotRemote { path: "/test/path".into(), uuid: Uuid::parse_str("11eed410-7829-744e-8288-35c21d278f8e").unwrap(), received_uuid: Uuid::parse_str("7f305e3e-851b-974b-a476-e2f206e7a407").unwrap() },
-            SnapshotRemote { path: "/test/path".into(), uuid: Uuid::parse_str("11eed410-7829-744e-8288-35c21d278f8e").unwrap(), received_uuid: Uuid::parse_str("7f305e3e-851b-974b-a476-e2f206e7a408").unwrap() },
+            SnapshotRemote { path: "/test/path".into(), timestamp: Utc.ymd(2021, 5, 2).and_hms(7, 40, 32).into(), uuid: Uuid::parse_str("11eed410-7829-744e-8288-35c21d278f8e").unwrap(), received_uuid: Uuid::parse_str("7f305e3e-851b-974b-a476-e2f206e7a407").unwrap() },
+            SnapshotRemote { path: "/test/path".into(), timestamp: Utc.ymd(2021, 5, 2).and_hms(7, 40, 32).into(), uuid: Uuid::parse_str("11eed410-7829-744e-8288-35c21d278f8e").unwrap(), received_uuid: Uuid::parse_str("7f305e3e-851b-974b-a476-e2f206e7a408").unwrap() },
         ];
 
-        assert_eq!(Some(SnapshotLocal { path: "/snapshots/2021-05-02T07:40:32Z_inf_btrfs_test".into(), uuid: Uuid::parse_str("7f305e3e-851b-974b-a476-e2f206e7a408").unwrap(), parent_uuid: Uuid::parse_str("5f0b151b-52e4-4445-aa94-d07056733a1f").unwrap() }), utils::get_common_parent(&sl, &sr).unwrap());
+        assert_eq!(Some(SnapshotLocal { path: "/snapshots/2021-05-02T07:40:32Z_inf_btrfs_test".into(), timestamp: Utc.ymd(2021, 5, 2).and_hms(7, 40, 32).into(), uuid: Uuid::parse_str("7f305e3e-851b-974b-a476-e2f206e7a408").unwrap(), parent_uuid: Uuid::parse_str("5f0b151b-52e4-4445-aa94-d07056733a1f").unwrap() }), utils::get_common_parent(&sl, &sr).unwrap());
     }
 
     #[test]
@@ -482,7 +496,7 @@ mod utils_tests {
     }
 
     #[test]
-    fn get_snapshots() {
+    fn get_local_snapshots() {
         let input = r#"ID      gen     parent  top level       parent_uuid     received_uuid   uuid    path
 --      ---     ------  ---------       -----------     -------------   ----    ----
 256     119496  5       5               -                                       -                                       11eed410-7829-744e-8288-35c21d278f8e    home
@@ -492,9 +506,22 @@ mod utils_tests {
 370     119446  359     359             5f0b151b-52e4-4445-aa94-d07056733a1f    -                                       1bd1da76-b61f-db41-a2d2-c3474a31f38f    snapshots/2021-05-02T13:38:49Z_inf_btrfs_test
 "#;
 
+        match utils::get_local_snapshots("/opt/btrfs_test", input) {
+            Err(e) => println!("{}", e),
+            Ok(_) => {}
+        }
+
         assert_eq!(vec![
-            SnapshotLocal { path: "/snapshots/2021-05-02T07:40:32Z_inf_btrfs_test".into(), uuid: Uuid::parse_str("7f305e3e-851b-974b-a476-e2f206e7a407").unwrap(), parent_uuid: Uuid::parse_str("5f0b151b-52e4-4445-aa94-d07056733a1f").unwrap() },
-            SnapshotLocal { path: "/snapshots/2021-05-02T13:38:49Z_inf_btrfs_test".into(), uuid: Uuid::parse_str("1bd1da76-b61f-db41-a2d2-c3474a31f38f").unwrap(), parent_uuid: Uuid::parse_str("5f0b151b-52e4-4445-aa94-d07056733a1f").unwrap() },
+            SnapshotLocal { path: "/snapshots/2021-05-02T07:40:32Z_inf_btrfs_test".into(), timestamp: Utc.ymd(2021, 5, 2).and_hms(7, 40, 32).into(), uuid: Uuid::parse_str("7f305e3e-851b-974b-a476-e2f206e7a407").unwrap(), parent_uuid: Uuid::parse_str("5f0b151b-52e4-4445-aa94-d07056733a1f").unwrap() },
+            SnapshotLocal { path: "/snapshots/2021-05-02T13:38:49Z_inf_btrfs_test".into(), timestamp: Utc.ymd(2021, 5, 2).and_hms(13, 38, 49).into(), uuid: Uuid::parse_str("1bd1da76-b61f-db41-a2d2-c3474a31f38f").unwrap(), parent_uuid: Uuid::parse_str("5f0b151b-52e4-4445-aa94-d07056733a1f").unwrap() },
         ], utils::get_local_snapshots("/opt/btrfs_test", input).unwrap());
+    }
+
+    #[test]
+    fn get_timestamp_suffix_from_snapshot_path() {
+        let (timestamp, suffix) = utils::get_timestamp_suffix_from_snapshot_path(&String::from("/opt/snapshots/2021-05-12T04:23:12Z_exo_btrfs_test")).unwrap();
+
+        assert_eq!(Utc.ymd(2021, 05, 12).and_hms(4, 23, 12), timestamp);
+        assert_eq!(String::from("exo_btrfs_test"), suffix);
     }
 }
