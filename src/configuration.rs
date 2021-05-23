@@ -1,7 +1,7 @@
-use std::fs::File;
-use anyhow::{Result, Context};
-use serde::Deserialize;
 use crate::CustomDuration;
+use anyhow::{Context, Result};
+use serde::Deserialize;
+use std::fs::File;
 
 #[derive(Debug, Deserialize)]
 pub struct Configuration {
@@ -24,8 +24,11 @@ pub struct ConfigurationSsh {
 
 impl Configuration {
     pub fn read_from_file(filepath: &str) -> Result<Self> {
-        let file = File::open(filepath).context(format!("could not open configuration file \"{}\"", filepath))?;
-        
+        let file = File::open(filepath).context(format!(
+            "could not open configuration file \"{}\"",
+            filepath
+        ))?;
+
         Ok(serde_json::from_reader(file)?)
     }
 }

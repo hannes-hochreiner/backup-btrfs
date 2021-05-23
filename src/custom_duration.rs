@@ -1,7 +1,7 @@
-use std::{convert::TryFrom};
-use serde::{Deserialize};
-use chrono::{Duration};
 use crate::custom_error::CustomError;
+use chrono::Duration;
+use serde::Deserialize;
+use std::convert::TryFrom;
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct CustomDuration {
@@ -56,19 +56,27 @@ impl TryFrom<&CustomDuration> for Duration {
         let mut dur = Duration::nanoseconds(0);
 
         if cd.minutes.is_some() {
-            dur = dur.checked_add(&Duration::minutes(cd.minutes.unwrap())).ok_or(CustomError::DurationConversionError)?
+            dur = dur
+                .checked_add(&Duration::minutes(cd.minutes.unwrap()))
+                .ok_or(CustomError::DurationConversionError)?
         }
 
         if cd.hours.is_some() {
-            dur = dur.checked_add(&Duration::hours(cd.hours.unwrap())).ok_or(CustomError::DurationConversionError)?
+            dur = dur
+                .checked_add(&Duration::hours(cd.hours.unwrap()))
+                .ok_or(CustomError::DurationConversionError)?
         }
 
         if cd.days.is_some() {
-            dur = dur.checked_add(&Duration::days(cd.days.unwrap())).ok_or(CustomError::DurationConversionError)?
+            dur = dur
+                .checked_add(&Duration::days(cd.days.unwrap()))
+                .ok_or(CustomError::DurationConversionError)?
         }
 
         if cd.weeks.is_some() {
-            dur = dur.checked_add(&Duration::weeks(cd.weeks.unwrap())).ok_or(CustomError::DurationConversionError)?
+            dur = dur
+                .checked_add(&Duration::weeks(cd.weeks.unwrap()))
+                .ok_or(CustomError::DurationConversionError)?
         }
 
         Ok(dur)
@@ -79,8 +87,8 @@ impl TryFrom<&CustomDuration> for Duration {
 mod tests {
     use std::convert::TryInto;
 
-    use chrono::{Duration};
     use crate::CustomDuration;
+    use chrono::Duration;
 
     #[test]
     fn convert_duration_1() {

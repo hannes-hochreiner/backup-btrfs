@@ -1,4 +1,4 @@
-use std::{error::Error, fmt::{Display}};
+use std::{error::Error, fmt::Display};
 
 #[derive(Debug)]
 pub enum CustomError {
@@ -14,13 +14,13 @@ impl Error for CustomError {}
 impl Display for CustomError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self {
-            CustomError::ExtractionError(s) | CustomError::ConfigurationError(s) | CustomError::CommandError(s) | CustomError::SnapshotError(s) => {
-                f.write_str(&*s)
-            },
+            CustomError::ExtractionError(s)
+            | CustomError::ConfigurationError(s)
+            | CustomError::CommandError(s)
+            | CustomError::SnapshotError(s) => f.write_str(&*s),
             CustomError::DurationConversionError => {
                 f.write_str("Duration Conversion Error: overflow")
-            },
+            }
         }
     }
 }
-
