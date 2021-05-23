@@ -9,7 +9,7 @@ mod custom_duration;
 use custom_duration::CustomDuration;
 use log::{debug, info};
 mod btrfs;
-use btrfs::Btrfs;
+use btrfs::{Btrfs, BtrfsCommands};
 mod command;
 mod configuration;
 use configuration::Configuration;
@@ -24,29 +24,33 @@ fn main() -> Result<()> {
     debug!("configuration read from file \"{}\"", config_filename);
 
     let mut btrfs = Btrfs::default();
+    let context_local = command::Context::Local {
+        user: config.user_local,
+    };
+    let context_remote = command::Context::Remote {
+        user: config.config_ssh.remote_user,
+        host: config.config_ssh.remote_host.clone(),
+        identity: config.config_ssh.identity_file_path,
+    };
     // create a new local snapshot
-    btrfs.create_local_snapshot(
+    btrfs.create_snapshot(
         &config.subvolume_path,
         &config.snapshot_path,
         &config.snapshot_suffix,
-        &config.user_local,
+        &context_local,
     )?;
 
     info!("created new snapshot");
 
     // get local snapshots
-    let subvolumes_local = btrfs.get_local_subvolumes(&config.user_local)?;
+    let subvolumes_local = btrfs.get_subvolumes(&context_local)?;
     let subvolume_backup =
         utils::get_subvolume_by_path(&config.subvolume_path, &mut subvolumes_local.iter())?;
     let snapshots_local =
         utils::get_local_snapshots(subvolume_backup, &mut subvolumes_local.iter())?;
 
     // get remote snapshots
-    let subvolumes_remote = btrfs.get_remote_subvolumes(
-        &config.config_ssh.remote_host,
-        &config.config_ssh.remote_user,
-        &config.config_ssh.identity_file_path,
-    )?;
+    let subvolumes_remote = btrfs.get_subvolumes(&context_remote)?;
     let snapshots_remote = utils::get_remote_snapshots(&mut subvolumes_remote.iter())?;
 
     // find common parent
@@ -85,17 +89,13 @@ fn main() -> Result<()> {
         .filter(|&e| *e != latest_local_snapshot.path)
     {
         btrfs
-            .delete_local_subvolume(&snapshot_path, &config.user_local)
+            .delete_subvolume(&snapshot_path, &context_local)
             .context(format!("error deleting snapshot \"{}\"", &snapshot_path))?;
         info!("deleted local snapshot \"{}\"", snapshot_path);
     }
 
     // get remote snapshots again
-    let subvolumes_remote = btrfs.get_remote_subvolumes(
-        &config.config_ssh.remote_host,
-        &config.config_ssh.remote_user,
-        &config.config_ssh.identity_file_path,
-    )?;
+    let subvolumes_remote = btrfs.get_subvolumes(&context_remote)?;
     let snapshots_remote = utils::get_remote_snapshots(&mut subvolumes_remote.iter())?;
 
     // review remote snapshots
@@ -119,12 +119,7 @@ fn main() -> Result<()> {
         .filter(|&e| *e != snapshot_remote_common.path)
     {
         btrfs
-            .delete_remote_subvolume(
-                &snapshot_path,
-                &config.config_ssh.remote_user,
-                &config.config_ssh.remote_host,
-                &config.config_ssh.identity_file_path,
-            )
+            .delete_subvolume(&snapshot_path, &context_remote)
             .context(format!("error deleting snapshot \"{}\"", &snapshot_path))?;
         info!(
             "deleted snapshot \"{}\" on host \"{}\"",

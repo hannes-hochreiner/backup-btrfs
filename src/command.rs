@@ -18,7 +18,7 @@ pub trait Command {
     fn run_piped(&mut self, commands: &Vec<(&str, &Context)>) -> Result<String>;
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Context {
     /// Local context
     ///

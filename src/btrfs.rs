@@ -9,6 +9,40 @@ use uuid::Uuid;
 #[cfg(test)]
 mod tests;
 
+pub trait BtrfsCommands {
+    /// Get subvolumes
+    ///
+    /// * `context` - context in which to execute the command
+    ///
+    fn get_subvolumes(&mut self, context: &Context) -> Result<Vec<Subvolume>>;
+    /// Create a snapshot locally
+    ///
+    /// The new snapshot will be created at the path `<snapshot_path>/<timestamp in rfc3339 format (UTC)>_<suffix>`.
+    /// This function executes the command `sudo -nu <user> bash -c "sudo btrfs subvolume snapshot -r \"<subvolume_path>\" \"<snapshot_path>/<timestamp in rfc3339 format (UTC)>_<suffix>\""`.
+    ///
+    /// * `subvolume_path` - path to the subvolume from which to create the snapshot
+    /// * `snapshot_path` - base path at which the snapshot should be created
+    /// * `snapshot_suffix` - suffix of the subvolume
+    /// * `context` - context in which to execute the command
+    ///
+    fn create_snapshot(
+        &mut self,
+        subvolume_path: &str,
+        snapshot_path: &str,
+        snapshot_suffix: &str,
+        context: &Context,
+    ) -> Result<()>;
+    /// Delete a snapshot
+    ///
+    /// Executes `btrfs subvolume delete <subvolume_path>`.
+    /// As a precaution, the subvolumes "home", "/home", "root", and "/" cannot be deleted.
+    ///
+    /// * `subvolume_path` - absolute path of the snapshot to be deleted
+    /// * `context` - context in which to execute the command
+    ///
+    fn delete_subvolume(&mut self, subvolume: &str, context: &Context) -> Result<()>;
+}
+
 pub struct Btrfs {
     command: Box<dyn Command>,
 }
@@ -29,40 +63,21 @@ impl Default for Btrfs {
     }
 }
 
-impl Btrfs {
-    pub fn get_local_subvolumes(&mut self, user: &str) -> Result<Vec<Subvolume>> {
-        self.get_subvolumes_with_context(&Context::Local { user: user.into() })
+impl BtrfsCommands for Btrfs {
+    fn get_subvolumes(&mut self, context: &Context) -> Result<Vec<Subvolume>> {
+        let output = self
+            .command
+            .run("sudo btrfs subvolume list -tupqR --sort=rootid /", context)?;
+
+        self.extract_subvolumes(&output)
     }
 
-    pub fn get_remote_subvolumes(
+    fn create_snapshot(
         &mut self,
-        host: &str,
-        user: &str,
-        identity: &str,
-    ) -> Result<Vec<Subvolume>> {
-        self.get_subvolumes_with_context(&Context::Remote {
-            host: host.into(),
-            user: user.into(),
-            identity: identity.into(),
-        })
-    }
-
-    /// Create a snapshot locally
-    ///
-    /// The new snapshot will be created at the path `<snapshot_path>/<timestamp in rfc3339 format (UTC)>_<suffix>`.
-    /// This function executes the command `sudo -nu <user> bash -c "sudo btrfs subvolume snapshot -r \"<subvolume_path>\" \"<snapshot_path>/<timestamp in rfc3339 format (UTC)>_<suffix>\""`.
-    ///
-    /// * `subvolume_path` - path to the subvolume from which to create the snapshot
-    /// * `snapshot_path` - base path at which the snapshot should be created
-    /// * `snapshot_suffix` - suffix of the subvolume
-    /// * `user` - local user executing the snapshot creation
-    ///
-    pub fn create_local_snapshot(
-        &mut self,
-        subvolume_path: &String,
-        snapshot_path: &String,
-        snapshot_suffix: &String,
-        user: &str,
+        subvolume_path: &str,
+        snapshot_path: &str,
+        snapshot_suffix: &str,
+        context: &Context,
     ) -> Result<()> {
         let snapshot_path_extension = format!(
             "{}_{}",
@@ -83,47 +98,13 @@ impl Btrfs {
                 "btrfs subvolume snapshot -r \"{}\" \"{}\"",
                 subvolume_path, snapshot_path
             ),
-            &Context::Local { user: user.into() },
+            context,
         )?;
 
         Ok(())
     }
 
-    /// Delete a snapshot
-    ///
-    /// Executes `btrfs subvolume delete <subvolume_path>`.
-    ///
-    /// * `subvolume_path` - absolute path of the snapshot to be deleted
-    ///
-    pub fn delete_local_subvolume(&mut self, subvolume_path: &String, user: &str) -> Result<()> {
-        self.delete_subvolume(subvolume_path, &Context::Local { user: user.into() })
-    }
-
-    pub fn delete_remote_subvolume(
-        &mut self,
-        subvolume_path: &String,
-        user: &str,
-        host: &str,
-        identity: &str,
-    ) -> Result<()> {
-        self.delete_subvolume(
-            subvolume_path,
-            &Context::Remote {
-                user: user.into(),
-                host: host.into(),
-                identity: identity.into(),
-            },
-        )
-    }
-
-    /// Delete a snapshot
-    ///
-    /// Executes `btrfs subvolume delete <subvolume_path>`.
-    /// As a precaution, the subvolumes "home", "/home", "root", and "/" cannot be deleted.
-    ///
-    /// * `subvolume_path` - absolute path of the snapshot to be deleted
-    ///
-    fn delete_subvolume(&mut self, subvolume: &String, context: &Context) -> Result<()> {
+    fn delete_subvolume(&mut self, subvolume: &str, context: &Context) -> Result<()> {
         let subvolume_path = Path::new(subvolume).canonicalize()?;
         let subvolume = subvolume_path
             .as_path()
@@ -141,16 +122,10 @@ impl Btrfs {
             )
             .map(|_| ())
     }
+}
 
-    fn get_subvolumes_with_context(&mut self, context: &Context) -> Result<Vec<Subvolume>> {
-        let output = self
-            .command
-            .run("sudo btrfs subvolume list -tupqR --sort=rootid /", context)?;
-
-        self.get_subvolumes(&output)
-    }
-
-    fn get_subvolumes(&self, input: &String) -> Result<Vec<Subvolume>> {
+impl Btrfs {
+    fn extract_subvolumes(&self, input: &String) -> Result<Vec<Subvolume>> {
         let mut subvolumes: Vec<Subvolume> = Vec::new();
         let mut lines = input.split("\n");
 

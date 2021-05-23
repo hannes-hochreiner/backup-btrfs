@@ -1,5 +1,5 @@
 use crate::{
-    btrfs::{Btrfs, Subvolume},
+    btrfs::{Btrfs, BtrfsCommands, Subvolume},
     command::{CommandMock, Context},
 };
 use std::str::FromStr;
@@ -79,13 +79,14 @@ fn delete_subvolume_root() {
 
 #[test]
 fn get_local_subvolumes() {
+    let ctx = Context::Local {
+        user: "test".into(),
+    };
     let mut btrfs = Btrfs {
         command: Box::new(CommandMock {
             commands: vec![(
                 String::from("sudo btrfs subvolume list -tupqR --sort=rootid /"),
-                Context::Local {
-                    user: "test".into(),
-                },
+                ctx.clone(),
             )],
             responses: vec![String::from(
                 r#"ID      gen     parent  top level       parent_uuid     received_uuid   uuid    path
@@ -101,7 +102,7 @@ fn get_local_subvolumes() {
     };
 
     assert_eq!(
-        btrfs.get_local_subvolumes("test").unwrap(),
+        btrfs.get_subvolumes(&ctx).unwrap(),
         vec![
             Subvolume {
                 uuid: Uuid::from_str("11eed410-7829-744e-8288-35c21d278f8e").unwrap(),
@@ -139,15 +140,16 @@ fn get_local_subvolumes() {
 
 #[test]
 fn get_remote_subvolumes() {
+    let ctx = Context::Remote {
+        host: "host".into(),
+        user: "user".into(),
+        identity: "/home/test/.ssh".into(),
+    };
     let mut btrfs = Btrfs {
         command: Box::new(CommandMock {
             commands: vec![(
                 String::from("sudo btrfs subvolume list -tupqR --sort=rootid /"),
-                Context::Remote {
-                    host: "host".into(),
-                    user: "user".into(),
-                    identity: "/home/test/.ssh".into(),
-                },
+                ctx.clone(),
             )],
             responses: vec![String::from(
                 r#"ID      gen     parent  top level       parent_uuid     received_uuid   uuid    path
@@ -162,9 +164,7 @@ fn get_remote_subvolumes() {
     };
 
     assert_eq!(
-        btrfs
-            .get_remote_subvolumes("host", "user", "/home/test/.ssh")
-            .unwrap(),
+        btrfs.get_subvolumes(&ctx).unwrap(),
         vec![
             Subvolume {
                 uuid: Uuid::from_str("0b5cc138-af8e-2744-be4f-bdede1b509ef").unwrap(),
