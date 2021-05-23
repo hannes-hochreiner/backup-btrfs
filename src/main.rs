@@ -13,6 +13,7 @@ use btrfs::{Btrfs, BtrfsCommands};
 mod command;
 mod configuration;
 use configuration::Configuration;
+use crate::utils::snapshot::{Snapshot};
 
 fn main() -> Result<()> {
     env_logger::init();
@@ -85,19 +86,19 @@ fn main() -> Result<()> {
     let snapshots_delete_local = find_backups_to_be_deleted(
         &filter_time.into(),
         &config.policy_local,
-        &snapshots_local.iter().map(|e| e.path.clone()).collect(),
+        &snapshots_local.iter().map(|e| e as &dyn Snapshot).collect(),
         &config.snapshot_suffix,
     )?;
 
     // delete local snapshots - filter out the most recent snapshot
-    for snapshot_path in snapshots_delete_local
+    for &snapshot in snapshots_delete_local
         .iter()
-        .filter(|&e| *e != latest_local_snapshot.path)
+        .filter(|&e| e.path() != latest_local_snapshot.path)
     {
         btrfs
-            .delete_subvolume(&snapshot_path, &context_local)
-            .context(format!("error deleting snapshot \"{}\"", &snapshot_path))?;
-        info!("deleted local snapshot \"{}\"", snapshot_path);
+            .delete_subvolume(snapshot.path(), &context_local)
+            .context(format!("error deleting snapshot \"{}\"", snapshot.path()))?;
+        info!("deleted local snapshot \"{}\"", snapshot.path());
     }
 
     // get remote snapshots again
@@ -108,7 +109,7 @@ fn main() -> Result<()> {
     let snapshots_delete_remote = find_backups_to_be_deleted(
         &filter_time.into(),
         &config.policy_remote,
-        &snapshots_remote.iter().map(|e| e.path.clone()).collect(),
+        &snapshots_remote.iter().map(|e| e as &dyn Snapshot).collect(),
         &config.snapshot_suffix,
     )?;
 
@@ -120,16 +121,16 @@ fn main() -> Result<()> {
             "common snapshot not found".into(),
         ))?;
 
-    for snapshot_path in snapshots_delete_remote
+    for &snapshot in snapshots_delete_remote
         .iter()
-        .filter(|&e| *e != snapshot_remote_common.path)
+        .filter(|&e| e.path() != snapshot_remote_common.path)
     {
         btrfs
-            .delete_subvolume(&snapshot_path, &context_remote)
-            .context(format!("error deleting snapshot \"{}\"", &snapshot_path))?;
+            .delete_subvolume(snapshot.path(), &context_remote)
+            .context(format!("error deleting snapshot \"{}\"", snapshot.path()))?;
         info!(
             "deleted snapshot \"{}\" on host \"{}\"",
-            snapshot_path, config.config_ssh.remote_host
+            snapshot.path(), config.config_ssh.remote_host
         );
     }
 

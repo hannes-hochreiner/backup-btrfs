@@ -1,7 +1,7 @@
 use crate::{
     btrfs::{Btrfs, BtrfsCommands, Subvolume},
     command::{CommandMock, Context},
-    utils::SnapshotLocal,
+    utils::snapshot::SnapshotLocal,
 };
 use chrono::Utc;
 use std::str::FromStr;
