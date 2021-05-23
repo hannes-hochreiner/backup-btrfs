@@ -1,4 +1,4 @@
-use std::{env, fs::File};
+use std::env;
 mod custom_error;
 use custom_error::CustomError;
 use chrono::{
@@ -6,61 +6,41 @@ use chrono::{
 };
 mod utils;
 use utils::{
-    create_snapshot,
-    get_snapshot_list_local,
-    get_local_snapshots,
     find_backups_to_be_deleted,
-    delete_snapshot,
-    get_snapshot_list_remote,
-    get_remote_snapshots,
     get_common_parent,
-    send_snapshot,
-    delete_remote_snapshot,
 };
-use serde::Deserialize;
 use anyhow::{Result, Context};
 mod custom_duration;
 use custom_duration::CustomDuration;
 use log::{debug, info};
-
-#[derive(Debug, Deserialize)]
-pub struct ConfigSsh {
-    remote_host: String,
-    remote_user: String,
-    identity_file_path: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct Config {
-    subvolume_path: String,
-    snapshot_path: String,
-    snapshot_suffix: String,
-    policy_local: Vec<CustomDuration>,
-    config_ssh: ConfigSsh,
-    backup_path: String,
-    policy_remote: Vec<CustomDuration>,
-}
+mod btrfs;
+use btrfs::Btrfs;
+mod command;
+mod configuration;
+use configuration::Configuration;
 
 fn main() -> Result<()>{
     env_logger::init();
 
     // read config file
     let config_filename = env::var("BACKUP_LOCAL_RS_CONFIG").context("could not find environment variable BACKUP_LOCAL_RS_CONFIG")?;
-    let file = File::open(&config_filename).context(format!("could not open configuration file \"{}\"", config_filename))?;
-    let config: Config = serde_json::from_reader(file)?;
-
+    let config = Configuration::read_from_file(&config_filename)?;
     debug!("configuration read from file \"{}\"", config_filename);
 
+    let mut btrfs = Btrfs::default();
     // create a new local snapshot
-    create_snapshot(&config.subvolume_path, &config.snapshot_path, &config.snapshot_suffix)?;
+    btrfs.create_local_snapshot(&config.subvolume_path, &config.snapshot_path, &config.snapshot_suffix, &config.user_local)?;
 
     info!("created new snapshot");
 
     // get local snapshots
-    let snapshots_local = get_local_snapshots(&config.subvolume_path, &*get_snapshot_list_local()?)?;
+    let subvolumes_local = btrfs.get_local_subvolumes(&config.user_local)?;
+    let subvolume_backup = utils::get_subvolume_by_path(&config.subvolume_path, &mut subvolumes_local.iter())?;
+    let snapshots_local = utils::get_local_snapshots(subvolume_backup, &mut subvolumes_local.iter())?;
 
     // get remote snapshots
-    let snapshots_remote = get_remote_snapshots(&*get_snapshot_list_remote(&config.config_ssh)?)?;
+    let subvolumes_remote = btrfs.get_remote_subvolumes(&config.config_ssh.remote_host, &config.config_ssh.remote_user, &config.config_ssh.identity_file_path)?;
+    let snapshots_remote = utils::get_remote_snapshots(&mut subvolumes_remote.iter())?;
 
     // find common parent
     let common_parent = get_common_parent(&snapshots_local, &snapshots_remote)?;
@@ -73,7 +53,7 @@ fn main() -> Result<()>{
     let latest_local_snapshot = snapshots_local.last().ok_or(CustomError::SnapshotError("no snapshot found".into()))?.clone();
 
     // send remote backup
-    send_snapshot(&latest_local_snapshot, &common_parent, &*config.backup_path, &config.config_ssh)?;
+    // send_snapshot(&latest_local_snapshot, &common_parent, &*config.backup_path, &config.config_ssh)?;
 
     info!("sent snapshot \"{}\" to \"{}\" on host \"{}\"", &latest_local_snapshot.path, config.backup_path, config.config_ssh.remote_host);
 
@@ -83,12 +63,13 @@ fn main() -> Result<()>{
 
     // delete local snapshots - filter out the most recent snapshot
     for snapshot_path in snapshots_delete_local.iter().filter(|&e| *e != latest_local_snapshot.path) {
-        delete_snapshot(&snapshot_path).context(format!("error deleting snapshot \"{}\"", &snapshot_path))?;
+        btrfs.delete_local_subvolume(&snapshot_path, &config.user_local).context(format!("error deleting snapshot \"{}\"", &snapshot_path))?;
         info!("deleted local snapshot \"{}\"", snapshot_path);
     }
 
     // get remote snapshots again
-    let snapshots_remote = get_remote_snapshots(&*get_snapshot_list_remote(&config.config_ssh)?)?;
+    let subvolumes_remote = btrfs.get_remote_subvolumes(&config.config_ssh.remote_host, &config.config_ssh.remote_user, &config.config_ssh.identity_file_path)?;
+    let snapshots_remote = utils::get_remote_snapshots(&mut subvolumes_remote.iter())?;
 
     // review remote snapshots
     let snapshots_delete_remote = find_backups_to_be_deleted(&filter_time.into(), &config.policy_remote, &snapshots_remote.iter().map(|e| e.path.clone()).collect(), &config.snapshot_suffix)?;
@@ -97,7 +78,7 @@ fn main() -> Result<()>{
     let snapshot_remote_common = snapshots_remote.iter().find(|&e| e.received_uuid == latest_local_snapshot.uuid).ok_or(CustomError::SnapshotError("common snapshot not found".into()))?;
     
     for snapshot_path in snapshots_delete_remote.iter().filter(|&e| *e != snapshot_remote_common.path) {
-        delete_remote_snapshot(&snapshot_path, &config.config_ssh).context(format!("error deleting snapshot \"{}\"", &snapshot_path))?;
+        btrfs.delete_remote_subvolume(&snapshot_path, &config.config_ssh.remote_user, &config.config_ssh.remote_host, &config.config_ssh.identity_file_path).context(format!("error deleting snapshot \"{}\"", &snapshot_path))?;
         info!("deleted snapshot \"{}\" on host \"{}\"", snapshot_path, config.config_ssh.remote_host);
     }
     

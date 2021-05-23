@@ -1,8 +1,8 @@
-use std::{collections::HashMap, convert::TryInto, path::{Path, PathBuf}, process::{Stdio, Command, Output}, str::FromStr};
+use std::{collections::HashMap, convert::{TryFrom, TryInto}, path::{Path, PathBuf}, process::{Command, Output}};
 use chrono::{DateTime, Duration, FixedOffset, SecondsFormat, Utc};
 use uuid::Uuid;
-use crate::{ConfigSsh, custom_duration::CustomDuration, custom_error::CustomError};
-use anyhow::{Context, Result};
+use crate::{btrfs::Subvolume, custom_duration::CustomDuration, custom_error::CustomError};
+use anyhow::{Context, Result, anyhow, Error};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct SnapshotLocal {
@@ -10,6 +10,23 @@ pub struct SnapshotLocal {
     pub timestamp: chrono::DateTime<FixedOffset>,
     pub uuid: Uuid,
     pub parent_uuid: Uuid,
+    pub suffix: String,
+}
+
+impl TryFrom<&Subvolume> for SnapshotLocal {
+    type Error = Error;
+
+    fn try_from(value: &Subvolume) -> Result<Self, Self::Error> {
+        let (timestamp, suffix) = get_timestamp_suffix_from_snapshot_path(&value.path)?;
+
+        Ok(SnapshotLocal {
+            parent_uuid: value.parent_uuid.ok_or(anyhow!("no uuid found for snapshot"))?,
+            path: value.path.clone(),
+            timestamp,
+            uuid: value.uuid,
+            suffix,
+        })
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -17,47 +34,24 @@ pub struct SnapshotRemote {
     pub path: String,
     pub timestamp: chrono::DateTime<FixedOffset>,
     pub uuid: Uuid,
-    pub received_uuid: Uuid
+    pub received_uuid: Uuid,
+    pub suffix: String,
 }
 
-/// Delete a snapshot
-///
-/// Executes `btrfs subvolume delete <snapshot_path>`.
-///
-/// * `snapshot_path` - absolute path of the snapshot to be deleted
-///
-pub fn delete_snapshot(snapshot_path: &String) -> Result<()> {
-    let snapshot_path = PathBuf::from(&*snapshot_path);
+impl TryFrom<&Subvolume> for SnapshotRemote {
+    type Error = Error;
 
-    check_dir_absolute(snapshot_path.as_path()).context("snapshot_path must be an absolute path to a directory")?;
+    fn try_from(value: &Subvolume) -> Result<Self, Self::Error> {
+        let (timestamp, suffix) = get_timestamp_suffix_from_snapshot_path(&value.path)?;
 
-    let output = Command::new("btrfs")
-        .arg("subvolume")
-        .arg("delete")
-        .arg(snapshot_path)
-        .output().context("running command to delete a snapshot failed")?;
-
-    check_output(&output).context("output of command to delete a snapshot contained an error")?;
-
-    Ok(())
-}
-
-/// Delete a snapshot on a remote host
-///
-/// * `snapshot_path` - path of the snapshot to be deleted
-/// * `config_ssh` - ssh configuration
-///
-pub fn delete_remote_snapshot(snapshot_path: &String, config_ssh: &ConfigSsh) -> Result<()> {
-    let output = Command::new("ssh")
-        .arg("-i")
-        .arg(&config_ssh.identity_file_path)
-        .arg(format!("{}@{}", config_ssh.remote_user, config_ssh.remote_host))
-        .arg(format!("sudo btrfs subvolume delete \"{}\"", snapshot_path))
-        .output().context("running command to delete a snapshot failed")?;
-
-    check_output(&output).context("output of command to delete a snapshot contained an error")?;
-
-    Ok(())
+        Ok(SnapshotRemote {
+            received_uuid: value.received_uuid.ok_or(anyhow!("no uuid found for snapshot"))?,
+            path: value.path.clone(),
+            timestamp,
+            uuid: value.uuid,
+            suffix,
+        })
+    }
 }
 
 /// Send snapshot
@@ -67,73 +61,36 @@ pub fn delete_remote_snapshot(snapshot_path: &String, config_ssh: &ConfigSsh) ->
 /// * `backup_path` - absolute path for backups on the remote host
 /// * `config_ssh` - ssh configuration
 ///
-pub fn send_snapshot(snapshot: &SnapshotLocal, parent_snapshot: &Option<SnapshotLocal>, backup_path: &str, config_ssh: &ConfigSsh) -> Result<()> {
-    let mut args = vec!["send"];
+// pub fn send_snapshot(snapshot: &SnapshotLocal, parent_snapshot: &Option<SnapshotLocal>, backup_path: &str, config_ssh: &ConfigSsh) -> Result<()> {
+//     let mut args = vec!["send"];
 
-    match parent_snapshot {
-        Some(ps) => {
-            args.push("-p");
-            args.push(&*ps.path);
-        },
-        _ => {}
-    }
+//     match parent_snapshot {
+//         Some(ps) => {
+//             args.push("-p");
+//             args.push(&*ps.path);
+//         },
+//         _ => {}
+//     }
 
-    args.push(&snapshot.path);
+//     args.push(&snapshot.path);
 
-    let cmd_btrfs = Command::new("btrfs")
-        .args(args)
-        .stdout(Stdio::piped())
-        .spawn().context("error running btrfs send command")?;
+//     let cmd_btrfs = Command::new("btrfs")
+//         .args(args)
+//         .stdout(Stdio::piped())
+//         .spawn().context("error running btrfs send command")?;
 
-    let cmd_ssh = Command::new("ssh")
-        .arg("-i")
-        .arg(&config_ssh.identity_file_path)
-        .arg(format!("{}@{}", config_ssh.remote_user, config_ssh.remote_host))
-        .arg(format!("sudo btrfs receive \"{}\"", backup_path))
-        .stdin(cmd_btrfs.stdout.ok_or(CustomError::CommandError("could not open stdout".into()))?)
-        .output().context("error running ssh command")?;
+//     let cmd_ssh = Command::new("ssh")
+//         .arg("-i")
+//         .arg(&config_ssh.identity_file_path)
+//         .arg(format!("{}@{}", config_ssh.remote_user, config_ssh.remote_host))
+//         .arg(format!("sudo btrfs receive \"{}\"", backup_path))
+//         .stdin(cmd_btrfs.stdout.ok_or(CustomError::CommandError("could not open stdout".into()))?)
+//         .output().context("error running ssh command")?;
 
-    check_output(&cmd_ssh).context("error checking btrfs output")?;
+//     check_output(&cmd_ssh).context("error checking btrfs output")?;
     
-    Ok(())
-}
-
-/// Obtain the output of the command to create a list of subvolumes
-///
-/// Returns the output of the command `btrfs subvolume list -tupqR --sort=rootid /`.
-///
-pub fn get_snapshot_list_local() -> Result<String> {
-    let output = Command::new("btrfs")
-        .arg("subvolume")
-        .arg("list")
-        .arg("-tupqR")
-        .arg("--sort=rootid")
-        .arg("/")
-        .output().context("running command to obtain subvolume list failed")?;
-
-    let output = check_output(&output).context("output of command to obtain subvolume list contained an error")?;
-
-    Ok(String::from_utf8(output).context("error converting output of the command to obtain the list of subvolumens into a string")?)
-}
-
-/// Obtain the output of the command to create a list of subvolumes from a remote host
-///
-/// Returns the output of the command `sudo <remote_host> "btrfs subvolume list -tupqR --sort=rootid /"`.
-///
-/// * `config_ssh` - ssh configuration
-///
-pub fn get_snapshot_list_remote(config_ssh: &ConfigSsh) -> Result<String> {
-    let output = Command::new("ssh")
-        .arg("-i")
-        .arg(&config_ssh.identity_file_path)
-        .arg(format!("{}@{}", config_ssh.remote_user, config_ssh.remote_host))
-        .arg("sudo btrfs subvolume list -tupqR --sort=rootid /")
-        .output().context("running command to obtain subvolume list failed")?;
-
-    let output = check_output(&output).context("output of command to obtain subvolume list from a remote host contained an error")?;
-
-    Ok(String::from_utf8(output).context("error converting output of the command to obtain the list of subvolumens from a remote host into a string")?)
-}
+//     Ok(())
+// }
 
 /// Create a new snapshot
 ///
@@ -258,102 +215,42 @@ pub fn find_backups_to_be_deleted(current_timestamp: &DateTime<FixedOffset>, pol
     Ok(res)
 }
 
-/// Extract the local snapshots for a given subvolume.
+/// Get a reference to a subvolume from an iterator over subvolumes based on the path.
 ///
 /// * `path` - path of the subvolume
-/// * `subvolume_list` - output of the commant `btrfs subvolume list -tupq --sort=rootid /`
+/// * `subvolume_list` - iterator over subvolumes
 ///
-pub fn get_local_snapshots(path: &str, subvolume_list: &str) -> Result<Vec<SnapshotLocal>> {
-    let mut snapshots: Vec<SnapshotLocal> = Vec::new();
+pub fn get_subvolume_by_path<'a>(path: &str, subvolumes: &mut impl Iterator<Item = &'a Subvolume>) -> Result<&'a Subvolume> {
+    subvolumes.find(|e| &*e.path == path).ok_or(anyhow!("subvolume to be backed up not found"))
+}
 
-    let mut lines = subvolume_list.split("\n");
-
-    if lines.next().ok_or(CustomError::ExtractionError("could not find header line".into()))?
-        .split_ascii_whitespace().collect::<Vec<&str>>() != vec!["ID", "gen", "parent", "top", "level", "parent_uuid", "received_uuid", "uuid", "path"] {
-        return Err(CustomError::ExtractionError("unexpected header line".into()).into());
-    }
-
-    let mut sv_uuid: Option<Uuid> = None;
-
-    for line in lines.skip(1).into_iter() {
-        let tokens: Vec<&str> = line.split_ascii_whitespace().collect();
-
-        if tokens.len() != 8 {
-            continue;
+/// Filter out the snapshots of a subvolume from a list of subvolumes.
+///
+/// The matching items are converted into local snapshot types.
+///
+/// * `subvolume` - subvolume for which to find snapshots
+/// * `subvolumes` - list of subvolumes
+///
+pub fn get_local_snapshots<'a>(subvolume: &Subvolume, subvolumes: &mut impl Iterator<Item = &'a Subvolume>) -> Result<Vec<SnapshotLocal>> {
+    subvolumes.filter(|e| {
+        match e.parent_uuid {
+            Some(parent_uuid) => parent_uuid == subvolume.uuid,
+            None => false,
         }
-
-        let subvolume_path = format!("/{}", tokens[7]);
-        let subvolume_uuid = Uuid::from_str(tokens[6])?;
-        
-        match &sv_uuid {
-            Some(s) => {
-                match Uuid::from_str(tokens[4]) {
-                    Ok(parent_uuid) => {
-                        if parent_uuid == *s {
-                            let (subvolume_timestamp, _) = get_timestamp_suffix_from_snapshot_path(&subvolume_path).context("error extracting timestamp and suffix from snapshot path")?;
-    
-                            snapshots.push(SnapshotLocal {
-                                path: subvolume_path,
-                                timestamp: subvolume_timestamp,
-                                uuid: subvolume_uuid,
-                                parent_uuid: parent_uuid,
-                            });
-                        }
-                    },
-                    Err(_) => {},
-                }
-            },
-            None => {
-                if subvolume_path == path {
-                    sv_uuid = Some(subvolume_uuid);
-                }
-            }
-        }
-    }
-
-    Ok(snapshots)
+    }).map(|e| e.try_into()).collect()
 }
 
 /// Extract the remote snapshots
 ///
-/// * `subvolume_list` - output of the commant `btrfs subvolume list -tupq --sort=rootid /`
+/// * `subvolumes` - list of subvolumes
 ///
-pub fn get_remote_snapshots(subvolume_list: &str) -> Result<Vec<SnapshotRemote>> {
-    let mut snapshots: Vec<SnapshotRemote> = Vec::new();
-
-    let mut lines = subvolume_list.split("\n");
-
-    if lines.next().ok_or(CustomError::ExtractionError("could not find header line".into()))?
-        .split_ascii_whitespace().collect::<Vec<&str>>() != vec!["ID", "gen", "parent", "top", "level", "parent_uuid", "received_uuid", "uuid", "path"] {
-        return Err(CustomError::ExtractionError("unexpected header line".into()).into());
-    }
-
-    for line in lines.skip(1).into_iter() {
-        let tokens: Vec<&str> = line.split_ascii_whitespace().collect();
-
-        if tokens.len() != 8 {
-            continue;
+pub fn get_remote_snapshots<'a>(subvolumes: &mut impl Iterator<Item = &'a Subvolume>) -> Result<Vec<SnapshotRemote>> {
+    subvolumes.filter(|e| {
+        match e.received_uuid {
+            Some(..) => true,
+            None => false,
         }
-
-        let subvolume_path = format!("/{}", tokens[7]);
-        let subvolume_uuid = Uuid::from_str(tokens[6])?;
-        
-        match Uuid::from_str(tokens[5]) {
-            Ok(received_uuid) => {
-                let (subvolume_timestamp, _) = get_timestamp_suffix_from_snapshot_path(&subvolume_path).context("error extracting subvolume timestamp")?;
-
-                snapshots.push(SnapshotRemote {
-                    path: subvolume_path,
-                    timestamp: subvolume_timestamp,
-                    uuid: subvolume_uuid,
-                    received_uuid,
-                });
-            },
-            Err(_) => {},
-        }
-    }
-
-    Ok(snapshots)
+    }).map(|e| e.try_into()).collect()
 }
 
 /// Get the newest snapshot that was used received on the remote host and is still available locally
@@ -378,150 +275,216 @@ pub fn get_common_parent(snapshots_local: &Vec<SnapshotLocal>, snapshots_remote:
 }
 
 #[cfg(test)]
-mod utils_tests {
+mod tests {
     use chrono::{TimeZone, Utc};
     use uuid::Uuid;
-    use crate::{CustomDuration, utils::{SnapshotLocal, SnapshotRemote}};
-    use crate::utils;
+    use crate::{
+        utils::{SnapshotLocal, SnapshotRemote}
+    };
+
+    #[test]
+    fn get_subvolume_by_path() {
+        todo!()
+    }
 
     #[test]
     fn get_common_parent_1() {
         let sl = vec![
-            SnapshotLocal { path: "/snapshots/2021-05-02T07:40:32Z_inf_btrfs_test".into(), timestamp: Utc.ymd(2021, 5, 2).and_hms(7, 40, 32).into(), uuid: Uuid::parse_str("7f305e3e-851b-974b-a476-e2f206e7a407").unwrap(), parent_uuid: Uuid::parse_str("5f0b151b-52e4-4445-aa94-d07056733a1f").unwrap() },
+            SnapshotLocal {
+                path: "/snapshots/2021-05-02T07:40:32Z_inf_btrfs_test".into(),
+                timestamp: Utc.ymd(2021, 5, 2).and_hms(7, 40, 32).into(),
+                uuid: Uuid::parse_str("7f305e3e-851b-974b-a476-e2f206e7a407").unwrap(),
+                parent_uuid: Uuid::parse_str("5f0b151b-52e4-4445-aa94-d07056733a1f").unwrap(),
+                suffix: "inf_btrfs_test".into(),
+            },
         ];
         let sr = vec![
-            SnapshotRemote { path: "/test/path".into(), timestamp: Utc.ymd(2021, 5, 2).and_hms(7, 40, 32).into(), uuid: Uuid::parse_str("11eed410-7829-744e-8288-35c21d278f8e").unwrap(), received_uuid: Uuid::parse_str("7f305e3e-851b-974b-a476-e2f206e7a407").unwrap() },
+            SnapshotRemote {
+                path: "/test/path".into(),
+                timestamp: Utc.ymd(2021, 5, 2).and_hms(7, 40, 32).into(),
+                uuid: Uuid::parse_str("11eed410-7829-744e-8288-35c21d278f8e").unwrap(),
+                received_uuid: Uuid::parse_str("7f305e3e-851b-974b-a476-e2f206e7a407").unwrap(),
+                suffix: "inf_btrfs_test".into(),
+            },
         ];
 
-        assert_eq!(Some(SnapshotLocal { path: "/snapshots/2021-05-02T07:40:32Z_inf_btrfs_test".into(), timestamp: Utc.ymd(2021, 5, 2).and_hms(7, 40, 32).into(), uuid: Uuid::parse_str("7f305e3e-851b-974b-a476-e2f206e7a407").unwrap(), parent_uuid: Uuid::parse_str("5f0b151b-52e4-4445-aa94-d07056733a1f").unwrap() }), utils::get_common_parent(&sl, &sr).unwrap());
+        assert_eq!(Some(SnapshotLocal {
+            path: "/snapshots/2021-05-02T07:40:32Z_inf_btrfs_test".into(),
+            timestamp: Utc.ymd(2021, 5, 2).and_hms(7, 40, 32).into(),
+            uuid: Uuid::parse_str("7f305e3e-851b-974b-a476-e2f206e7a407").unwrap(),
+            parent_uuid: Uuid::parse_str("5f0b151b-52e4-4445-aa94-d07056733a1f").unwrap(),
+            suffix: "inf_btrfs_test".into(),
+        }), crate::utils::get_common_parent(&sl, &sr).unwrap());
     }
 
     #[test]
     fn get_common_parent_2() {
         let sl = vec![
-            SnapshotLocal { path: "/snapshots/2021-05-02T07:40:32Z_inf_btrfs_test".into(), timestamp: Utc.ymd(2021, 5, 2).and_hms(7, 40, 32).into(), uuid: Uuid::parse_str("7f305e3e-851b-974b-a476-e2f206e7a408").unwrap(), parent_uuid: Uuid::parse_str("5f0b151b-52e4-4445-aa94-d07056733a1f").unwrap() },
+            SnapshotLocal {
+                path: "/snapshots/2021-05-02T07:40:32Z_inf_btrfs_test".into(),
+                timestamp: Utc.ymd(2021, 5, 2).and_hms(7, 40, 32).into(),
+                uuid: Uuid::parse_str("7f305e3e-851b-974b-a476-e2f206e7a408").unwrap(),
+                parent_uuid: Uuid::parse_str("5f0b151b-52e4-4445-aa94-d07056733a1f").unwrap(),
+                suffix: "inf_btrfs_test".into(),
+            },
         ];
         let sr = vec![
-            SnapshotRemote { path: "/test/path".into(), timestamp: Utc.ymd(2021, 5, 2).and_hms(7, 40, 32).into(), uuid: Uuid::parse_str("11eed410-7829-744e-8288-35c21d278f8e").unwrap(), received_uuid: Uuid::parse_str("7f305e3e-851b-974b-a476-e2f206e7a407").unwrap() },
+            SnapshotRemote {
+                path: "/test/path".into(),
+                timestamp: Utc.ymd(2021, 5, 2).and_hms(7, 40, 32).into(),
+                uuid: Uuid::parse_str("11eed410-7829-744e-8288-35c21d278f8e").unwrap(),
+                received_uuid: Uuid::parse_str("7f305e3e-851b-974b-a476-e2f206e7a407").unwrap(),
+                suffix: "inf_btrfs_test".into(),
+            },
         ];
 
-        assert_eq!(None, utils::get_common_parent(&sl, &sr).unwrap());
+        assert_eq!(None, crate::utils::get_common_parent(&sl, &sr).unwrap());
     }
 
     #[test]
     fn get_common_parent_3() {
         let sl = vec![
-            SnapshotLocal { path: "/snapshots/2021-05-02T07:40:32Z_inf_btrfs_test".into(), timestamp: Utc.ymd(2021, 5, 2).and_hms(7, 40, 32).into(), uuid: Uuid::parse_str("7f305e3e-851b-974b-a476-e2f206e7a408").unwrap(), parent_uuid: Uuid::parse_str("5f0b151b-52e4-4445-aa94-d07056733a1f").unwrap() },
-            SnapshotLocal { path: "/snapshots/2021-05-02T07:40:32Z_inf_btrfs_test".into(), timestamp: Utc.ymd(2021, 5, 2).and_hms(7, 40, 32).into(), uuid: Uuid::parse_str("7f305e3e-851b-974b-a476-e2f206e7a407").unwrap(), parent_uuid: Uuid::parse_str("5f0b151b-52e4-4445-aa94-d07056733a1f").unwrap() },
+            SnapshotLocal {
+                path: "/snapshots/2021-05-02T07:40:32Z_inf_btrfs_test".into(),
+                timestamp: Utc.ymd(2021, 5, 2).and_hms(7, 40, 32).into(),
+                uuid: Uuid::parse_str("7f305e3e-851b-974b-a476-e2f206e7a408").unwrap(),
+                parent_uuid: Uuid::parse_str("5f0b151b-52e4-4445-aa94-d07056733a1f").unwrap(),
+                suffix: "inf_btrfs_test".into(),
+            },
+            SnapshotLocal {
+                path: "/snapshots/2021-05-02T07:40:32Z_inf_btrfs_test".into(),
+                timestamp: Utc.ymd(2021, 5, 2).and_hms(7, 40, 32).into(),
+                uuid: Uuid::parse_str("7f305e3e-851b-974b-a476-e2f206e7a407").unwrap(),
+                parent_uuid: Uuid::parse_str("5f0b151b-52e4-4445-aa94-d07056733a1f").unwrap(),
+                suffix: "inf_btrfs_test".into(),
+            },
         ];
         let sr = vec![
-            SnapshotRemote { path: "/test/path".into(), timestamp: Utc.ymd(2021, 5, 2).and_hms(7, 40, 32).into(), uuid: Uuid::parse_str("11eed410-7829-744e-8288-35c21d278f8e").unwrap(), received_uuid: Uuid::parse_str("7f305e3e-851b-974b-a476-e2f206e7a407").unwrap() },
-            SnapshotRemote { path: "/test/path".into(), timestamp: Utc.ymd(2021, 5, 2).and_hms(7, 40, 32).into(), uuid: Uuid::parse_str("11eed410-7829-744e-8288-35c21d278f8e").unwrap(), received_uuid: Uuid::parse_str("7f305e3e-851b-974b-a476-e2f206e7a408").unwrap() },
+            SnapshotRemote {
+                path: "/test/path".into(),
+                timestamp: Utc.ymd(2021, 5, 2).and_hms(7, 40, 32).into(),
+                uuid: Uuid::parse_str("11eed410-7829-744e-8288-35c21d278f8e").unwrap(),
+                received_uuid: Uuid::parse_str("7f305e3e-851b-974b-a476-e2f206e7a407").unwrap(),
+                suffix: "inf_btrfs_test".into(),
+            },
+            SnapshotRemote {
+                path: "/test/path".into(),
+                timestamp: Utc.ymd(2021, 5, 2).and_hms(7, 40, 32).into(),
+                uuid: Uuid::parse_str("11eed410-7829-744e-8288-35c21d278f8e").unwrap(),
+                received_uuid: Uuid::parse_str("7f305e3e-851b-974b-a476-e2f206e7a408").unwrap(),
+                suffix: "inf_btrfs_test".into(),
+            },
         ];
 
-        assert_eq!(Some(SnapshotLocal { path: "/snapshots/2021-05-02T07:40:32Z_inf_btrfs_test".into(), timestamp: Utc.ymd(2021, 5, 2).and_hms(7, 40, 32).into(), uuid: Uuid::parse_str("7f305e3e-851b-974b-a476-e2f206e7a408").unwrap(), parent_uuid: Uuid::parse_str("5f0b151b-52e4-4445-aa94-d07056733a1f").unwrap() }), utils::get_common_parent(&sl, &sr).unwrap());
+        assert_eq!(Some(SnapshotLocal {
+            path: "/snapshots/2021-05-02T07:40:32Z_inf_btrfs_test".into(),
+            timestamp: Utc.ymd(2021, 5, 2).and_hms(7, 40, 32).into(),
+            uuid: Uuid::parse_str("7f305e3e-851b-974b-a476-e2f206e7a408").unwrap(),
+            parent_uuid: Uuid::parse_str("5f0b151b-52e4-4445-aa94-d07056733a1f").unwrap(),
+            suffix: "inf_btrfs_test".into(),
+        }), crate::utils::get_common_parent(&sl, &sr).unwrap());
     }
 
-    #[test]
-    fn find_backups_to_be_deleted_1() {
-        let current = Utc.ymd(2020, 1, 4).and_hms(10, 0, 0);
-        let policy = vec![CustomDuration::minutes(15)];
-        let backups = vec![
-            String::from("/snapshots/2020-01-02T09:00:00Z_host_subvolume"),
-            String::from("/snapshots/2020-01-02T09:30:00Z_host_subvolume"),
-            String::from("/snapshots/2020-01-03T09:00:00Z_host_subvolume"),
-        ];
-        let exp = vec![
-            String::from("/snapshots/2020-01-02T09:00:00Z_host_subvolume"),
-        ];
-        assert_eq!(exp, utils::find_backups_to_be_deleted(&current.into(), &policy, &backups, &String::from("host_subvolume")).unwrap());
-    }
+//     #[test]
+//     fn find_backups_to_be_deleted_1() {
+//         let current = Utc.ymd(2020, 1, 4).and_hms(10, 0, 0);
+//         let policy = vec![CustomDuration::minutes(15)];
+//         let backups = vec![
+//             String::from("/snapshots/2020-01-02T09:00:00Z_host_subvolume"),
+//             String::from("/snapshots/2020-01-02T09:30:00Z_host_subvolume"),
+//             String::from("/snapshots/2020-01-03T09:00:00Z_host_subvolume"),
+//         ];
+//         let exp = vec![
+//             String::from("/snapshots/2020-01-02T09:00:00Z_host_subvolume"),
+//         ];
+//         assert_eq!(exp, utils::find_backups_to_be_deleted(&current.into(), &policy, &backups, &String::from("host_subvolume")).unwrap());
+//     }
 
-    #[test]
-    fn find_backups_to_be_deleted_2() {
-        let current = Utc.ymd(2020, 1, 4).and_hms(10, 0, 0);
-        let policy = vec![CustomDuration::days(1), CustomDuration::days(2)];
-        let backups = vec![
-            String::from("/snapshots/2020-01-02T09:00:00Z_host_subvolume"),
-            String::from("/snapshots/2020-01-02T09:30:00Z_host_subvolume"),
-            String::from("/snapshots/2020-01-03T09:00:00Z_host_subvolume"),
-        ];
-        let exp: Vec<String> = Vec::new();
-        assert_eq!(exp, utils::find_backups_to_be_deleted(&current.into(), &policy, &backups, &String::from("host_subvolume")).unwrap());
-    }
+//     #[test]
+//     fn find_backups_to_be_deleted_2() {
+//         let current = Utc.ymd(2020, 1, 4).and_hms(10, 0, 0);
+//         let policy = vec![CustomDuration::days(1), CustomDuration::days(2)];
+//         let backups = vec![
+//             String::from("/snapshots/2020-01-02T09:00:00Z_host_subvolume"),
+//             String::from("/snapshots/2020-01-02T09:30:00Z_host_subvolume"),
+//             String::from("/snapshots/2020-01-03T09:00:00Z_host_subvolume"),
+//         ];
+//         let exp: Vec<String> = Vec::new();
+//         assert_eq!(exp, utils::find_backups_to_be_deleted(&current.into(), &policy, &backups, &String::from("host_subvolume")).unwrap());
+//     }
 
-    #[test]
-    fn find_backups_to_be_deleted_3() {
-        let current = Utc.ymd(2020, 1, 2).and_hms(09, 35, 0);
-        let policy = vec![CustomDuration::minutes(15), CustomDuration::days(1)];
-        let backups = vec![
-            String::from("/snapshots/2019-12-31T09:00:00Z_host_subvolume"),
-            String::from("/snapshots/2020-01-01T09:00:00Z_host_subvolume"),
-            String::from("/snapshots/2020-01-02T09:00:00Z_host_subvolume"),
-            String::from("/snapshots/2020-01-02T09:12:00Z_host2_subvolume"),
-            String::from("/snapshots/2020-01-02T09:15:00Z_host_subvolume"),
-            String::from("/snapshots/2020-01-02T09:07:00Z_host_subvolume"),
-            String::from("/snapshots/2020-01-02T09:30:00Z_host_subvolume"),
-        ];
-        let exp = vec![
-            String::from("/snapshots/2020-01-02T09:07:00Z_host_subvolume"),
-            String::from("/snapshots/2020-01-02T09:15:00Z_host_subvolume"),
-            String::from("/snapshots/2019-12-31T09:00:00Z_host_subvolume"),
-        ];
-        assert_eq!(exp, utils::find_backups_to_be_deleted(&current.into(), &policy, &backups, &String::from("host_subvolume")).unwrap());
-    }
+//     #[test]
+//     fn find_backups_to_be_deleted_3() {
+//         let current = Utc.ymd(2020, 1, 2).and_hms(09, 35, 0);
+//         let policy = vec![CustomDuration::minutes(15), CustomDuration::days(1)];
+//         let backups = vec![
+//             String::from("/snapshots/2019-12-31T09:00:00Z_host_subvolume"),
+//             String::from("/snapshots/2020-01-01T09:00:00Z_host_subvolume"),
+//             String::from("/snapshots/2020-01-02T09:00:00Z_host_subvolume"),
+//             String::from("/snapshots/2020-01-02T09:12:00Z_host2_subvolume"),
+//             String::from("/snapshots/2020-01-02T09:15:00Z_host_subvolume"),
+//             String::from("/snapshots/2020-01-02T09:07:00Z_host_subvolume"),
+//             String::from("/snapshots/2020-01-02T09:30:00Z_host_subvolume"),
+//         ];
+//         let exp = vec![
+//             String::from("/snapshots/2020-01-02T09:07:00Z_host_subvolume"),
+//             String::from("/snapshots/2020-01-02T09:15:00Z_host_subvolume"),
+//             String::from("/snapshots/2019-12-31T09:00:00Z_host_subvolume"),
+//         ];
+//         assert_eq!(exp, utils::find_backups_to_be_deleted(&current.into(), &policy, &backups, &String::from("host_subvolume")).unwrap());
+//     }
 
-    #[test]
-    fn find_backups_to_be_deleted_4() {
-        let current = Utc.ymd(2020, 1, 2).and_hms(09, 35, 0);
-        let policy: Vec<CustomDuration> = Vec::new();
-        let backups = vec![
-            String::from("/snapshots/2019-12-31T09:00:00Z_host_subvolume"),
-            String::from("/snapshots/2020-01-01T09:00:00Z_host_subvolume"),
-            String::from("/snapshots/2020-01-02T09:00:00Z_host_subvolume"),
-            String::from("/snapshots/2020-01-02T09:12:00Z_host2_subvolume"),
-            String::from("/snapshots/2020-01-02T09:15:00Z_host_subvolume"),
-            String::from("/snapshots/2020-01-02T09:07:00Z_host_subvolume"),
-            String::from("/snapshots/2020-01-02T09:30:00Z_host_subvolume"),
-        ];
-        let exp = vec![
-            String::from("/snapshots/2020-01-02T09:07:00Z_host_subvolume"),
-            String::from("/snapshots/2020-01-02T09:15:00Z_host_subvolume"),
-            String::from("/snapshots/2020-01-02T09:12:00Z_host2_subvolume"),
-            String::from("/snapshots/2020-01-02T09:00:00Z_host_subvolume"),
-            String::from("/snapshots/2020-01-01T09:00:00Z_host_subvolume"),
-            String::from("/snapshots/2019-12-31T09:00:00Z_host_subvolume"),
-        ];
-        assert_eq!(exp, utils::find_backups_to_be_deleted(&current.into(), &policy, &backups, &String::from("host_subvolume")).unwrap());
-    }
+//     #[test]
+//     fn find_backups_to_be_deleted_4() {
+//         let current = Utc.ymd(2020, 1, 2).and_hms(09, 35, 0);
+//         let policy: Vec<CustomDuration> = Vec::new();
+//         let backups = vec![
+//             String::from("/snapshots/2019-12-31T09:00:00Z_host_subvolume"),
+//             String::from("/snapshots/2020-01-01T09:00:00Z_host_subvolume"),
+//             String::from("/snapshots/2020-01-02T09:00:00Z_host_subvolume"),
+//             String::from("/snapshots/2020-01-02T09:12:00Z_host2_subvolume"),
+//             String::from("/snapshots/2020-01-02T09:15:00Z_host_subvolume"),
+//             String::from("/snapshots/2020-01-02T09:07:00Z_host_subvolume"),
+//             String::from("/snapshots/2020-01-02T09:30:00Z_host_subvolume"),
+//         ];
+//         let exp = vec![
+//             String::from("/snapshots/2020-01-02T09:07:00Z_host_subvolume"),
+//             String::from("/snapshots/2020-01-02T09:15:00Z_host_subvolume"),
+//             String::from("/snapshots/2020-01-02T09:12:00Z_host2_subvolume"),
+//             String::from("/snapshots/2020-01-02T09:00:00Z_host_subvolume"),
+//             String::from("/snapshots/2020-01-01T09:00:00Z_host_subvolume"),
+//             String::from("/snapshots/2019-12-31T09:00:00Z_host_subvolume"),
+//         ];
+//         assert_eq!(exp, utils::find_backups_to_be_deleted(&current.into(), &policy, &backups, &String::from("host_subvolume")).unwrap());
+//     }
 
-    #[test]
-    fn get_local_snapshots() {
-        let input = r#"ID      gen     parent  top level       parent_uuid     received_uuid   uuid    path
---      ---     ------  ---------       -----------     -------------   ----    ----
-256     119496  5       5               -                                       -                                       11eed410-7829-744e-8288-35c21d278f8e    home
-359     119496  5       5               -                                       -                                       32c672fa-d3ce-0b4e-8eaa-ab9205f377ca    root
-360     119446  359     359             -                                       -                                       5f0b151b-52e4-4445-aa94-d07056733a1f    opt/btrfs_test
-367     118687  359     359             5f0b151b-52e4-4445-aa94-d07056733a1f    -                                       7f305e3e-851b-974b-a476-e2f206e7a407    snapshots/2021-05-02T07:40:32Z_inf_btrfs_test
-370     119446  359     359             5f0b151b-52e4-4445-aa94-d07056733a1f    -                                       1bd1da76-b61f-db41-a2d2-c3474a31f38f    snapshots/2021-05-02T13:38:49Z_inf_btrfs_test
-"#;
+//     #[test]
+//     fn get_local_snapshots() {
+//         let input = r#"ID      gen     parent  top level       parent_uuid     received_uuid   uuid    path
+// --      ---     ------  ---------       -----------     -------------   ----    ----
+// 256     119496  5       5               -                                       -                                       11eed410-7829-744e-8288-35c21d278f8e    home
+// 359     119496  5       5               -                                       -                                       32c672fa-d3ce-0b4e-8eaa-ab9205f377ca    root
+// 360     119446  359     359             -                                       -                                       5f0b151b-52e4-4445-aa94-d07056733a1f    opt/btrfs_test
+// 367     118687  359     359             5f0b151b-52e4-4445-aa94-d07056733a1f    -                                       7f305e3e-851b-974b-a476-e2f206e7a407    snapshots/2021-05-02T07:40:32Z_inf_btrfs_test
+// 370     119446  359     359             5f0b151b-52e4-4445-aa94-d07056733a1f    -                                       1bd1da76-b61f-db41-a2d2-c3474a31f38f    snapshots/2021-05-02T13:38:49Z_inf_btrfs_test
+// "#;
 
-        match utils::get_local_snapshots("/opt/btrfs_test", input) {
-            Err(e) => println!("{}", e),
-            Ok(_) => {}
-        }
+//         match utils::get_local_snapshots("/opt/btrfs_test", input) {
+//             Err(e) => println!("{}", e),
+//             Ok(_) => {}
+//         }
 
-        assert_eq!(vec![
-            SnapshotLocal { path: "/snapshots/2021-05-02T07:40:32Z_inf_btrfs_test".into(), timestamp: Utc.ymd(2021, 5, 2).and_hms(7, 40, 32).into(), uuid: Uuid::parse_str("7f305e3e-851b-974b-a476-e2f206e7a407").unwrap(), parent_uuid: Uuid::parse_str("5f0b151b-52e4-4445-aa94-d07056733a1f").unwrap() },
-            SnapshotLocal { path: "/snapshots/2021-05-02T13:38:49Z_inf_btrfs_test".into(), timestamp: Utc.ymd(2021, 5, 2).and_hms(13, 38, 49).into(), uuid: Uuid::parse_str("1bd1da76-b61f-db41-a2d2-c3474a31f38f").unwrap(), parent_uuid: Uuid::parse_str("5f0b151b-52e4-4445-aa94-d07056733a1f").unwrap() },
-        ], utils::get_local_snapshots("/opt/btrfs_test", input).unwrap());
-    }
+//         assert_eq!(vec![
+//             SnapshotLocal { path: "/snapshots/2021-05-02T07:40:32Z_inf_btrfs_test".into(), timestamp: Utc.ymd(2021, 5, 2).and_hms(7, 40, 32).into(), uuid: Uuid::parse_str("7f305e3e-851b-974b-a476-e2f206e7a407").unwrap(), parent_uuid: Uuid::parse_str("5f0b151b-52e4-4445-aa94-d07056733a1f").unwrap() },
+//             SnapshotLocal { path: "/snapshots/2021-05-02T13:38:49Z_inf_btrfs_test".into(), timestamp: Utc.ymd(2021, 5, 2).and_hms(13, 38, 49).into(), uuid: Uuid::parse_str("1bd1da76-b61f-db41-a2d2-c3474a31f38f").unwrap(), parent_uuid: Uuid::parse_str("5f0b151b-52e4-4445-aa94-d07056733a1f").unwrap() },
+//         ], utils::get_local_snapshots("/opt/btrfs_test", input).unwrap());
+//     }
 
-    #[test]
-    fn get_timestamp_suffix_from_snapshot_path() {
-        let (timestamp, suffix) = utils::get_timestamp_suffix_from_snapshot_path(&String::from("/opt/snapshots/2021-05-12T04:23:12Z_exo_btrfs_test")).unwrap();
+//     #[test]
+//     fn get_timestamp_suffix_from_snapshot_path() {
+//         let (timestamp, suffix) = utils::get_timestamp_suffix_from_snapshot_path(&String::from("/opt/snapshots/2021-05-12T04:23:12Z_exo_btrfs_test")).unwrap();
 
-        assert_eq!(Utc.ymd(2021, 05, 12).and_hms(4, 23, 12), timestamp);
-        assert_eq!(String::from("exo_btrfs_test"), suffix);
-    }
+//         assert_eq!(Utc.ymd(2021, 05, 12).and_hms(4, 23, 12), timestamp);
+//         assert_eq!(String::from("exo_btrfs_test"), suffix);
+//     }
 }

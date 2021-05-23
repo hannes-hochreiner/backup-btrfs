@@ -76,7 +76,7 @@ impl TryFrom<&CustomDuration> for Duration {
 }
 
 #[cfg(test)]
-mod custom_duration_tests {
+mod tests {
     use std::convert::TryInto;
 
     use chrono::{Duration};
