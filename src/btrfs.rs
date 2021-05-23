@@ -1,4 +1,7 @@
-use crate::command::{Command, CommandSystem, Context};
+use crate::{
+    command::{Command, CommandSystem, Context},
+    utils::SnapshotLocal,
+};
 use anyhow::{anyhow, Error, Result};
 use chrono::{SecondsFormat, Utc};
 use std::{
@@ -41,6 +44,23 @@ pub trait BtrfsCommands {
     /// * `context` - context in which to execute the command
     ///
     fn delete_subvolume(&mut self, subvolume: &str, context: &Context) -> Result<()>;
+
+    /// Send a local snapshot to a remote host
+    ///
+    /// * `local_snapshot` - snapshot to be sent
+    /// * `common_parent` - parent snapshot (must be available on the remote host as well)
+    /// * `context_local` - context to execute the local commands
+    /// * `backup_path` - base path to store the snapshot on the remote host
+    /// * `context_remote` - context to execute the remote commands
+    ///
+    fn send_snapshot(
+        &mut self,
+        local_snapshot: &SnapshotLocal,
+        common_parent: &Option<&SnapshotLocal>,
+        context_local: &Context,
+        backup_path: &str,
+        context_remote: &Context,
+    ) -> Result<()>;
 }
 
 pub struct Btrfs {
@@ -120,6 +140,34 @@ impl BtrfsCommands for Btrfs {
                 &format!("sudo btrfs subvolume delete \"{}\"", subvolume),
                 context,
             )
+            .map(|_| ())
+    }
+
+    fn send_snapshot(
+        &mut self,
+        local_snapshot: &SnapshotLocal,
+        common_parent: &Option<&SnapshotLocal>,
+        context_local: &Context,
+        backup_path: &str,
+        context_remote: &Context,
+    ) -> Result<()> {
+        let mut parent_arg = String::new();
+
+        if let &Some(parent_snapshot) = common_parent {
+            parent_arg = format!("-p \"{}\"", parent_snapshot.path);
+        }
+
+        self.command
+            .run_piped(&vec![
+                (
+                    &*format!("sudo btrfs send {} \"{}\"", parent_arg, local_snapshot.path),
+                    context_local,
+                ),
+                (
+                    &*format!("sudo btrfs receive \"{}\"", backup_path),
+                    context_remote,
+                ),
+            ])
             .map(|_| ())
     }
 }

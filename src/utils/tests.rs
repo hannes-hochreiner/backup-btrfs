@@ -25,7 +25,7 @@ fn get_common_parent_1() {
     }];
 
     assert_eq!(
-        Some(SnapshotLocal {
+        Some(&SnapshotLocal {
             path: "/snapshots/2021-05-02T07:40:32Z_inf_btrfs_test".into(),
             timestamp: Utc.ymd(2021, 5, 2).and_hms(7, 40, 32).into(),
             uuid: Uuid::parse_str("7f305e3e-851b-974b-a476-e2f206e7a407").unwrap(),
@@ -92,7 +92,7 @@ fn get_common_parent_3() {
     ];
 
     assert_eq!(
-        Some(SnapshotLocal {
+        Some(&SnapshotLocal {
             path: "/snapshots/2021-05-02T07:40:32Z_inf_btrfs_test".into(),
             timestamp: Utc.ymd(2021, 5, 2).and_hms(7, 40, 32).into(),
             uuid: Uuid::parse_str("7f305e3e-851b-974b-a476-e2f206e7a408").unwrap(),

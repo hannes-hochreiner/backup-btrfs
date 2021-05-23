@@ -1,11 +1,10 @@
 use crate::{btrfs::Subvolume, custom_duration::CustomDuration, custom_error::CustomError};
 use anyhow::{anyhow, Context, Error, Result};
-use chrono::{DateTime, Duration, FixedOffset, SecondsFormat, Utc};
+use chrono::{DateTime, Duration, FixedOffset};
 use std::{
     collections::HashMap,
     convert::{TryFrom, TryInto},
-    path::{Path, PathBuf},
-    process::{Command, Output},
+    path::Path,
 };
 use uuid::Uuid;
 #[cfg(test)]
@@ -62,110 +61,6 @@ impl TryFrom<&Subvolume> for SnapshotRemote {
             uuid: value.uuid,
             suffix,
         })
-    }
-}
-
-/// Send snapshot
-///
-/// * `snapshot` - snapshot to be sent
-/// * `parent_snapshot` - an optional parent snapshot
-/// * `backup_path` - absolute path for backups on the remote host
-/// * `config_ssh` - ssh configuration
-///
-// pub fn send_snapshot(snapshot: &SnapshotLocal, parent_snapshot: &Option<SnapshotLocal>, backup_path: &str, config_ssh: &ConfigSsh) -> Result<()> {
-//     let mut args = vec!["send"];
-
-//     match parent_snapshot {
-//         Some(ps) => {
-//             args.push("-p");
-//             args.push(&*ps.path);
-//         },
-//         _ => {}
-//     }
-
-//     args.push(&snapshot.path);
-
-//     let cmd_btrfs = Command::new("btrfs")
-//         .args(args)
-//         .stdout(Stdio::piped())
-//         .spawn().context("error running btrfs send command")?;
-
-//     let cmd_ssh = Command::new("ssh")
-//         .arg("-i")
-//         .arg(&config_ssh.identity_file_path)
-//         .arg(format!("{}@{}", config_ssh.remote_user, config_ssh.remote_host))
-//         .arg(format!("sudo btrfs receive \"{}\"", backup_path))
-//         .stdin(cmd_btrfs.stdout.ok_or(CustomError::CommandError("could not open stdout".into()))?)
-//         .output().context("error running ssh command")?;
-
-//     check_output(&cmd_ssh).context("error checking btrfs output")?;
-
-//     Ok(())
-// }
-
-/// Create a new snapshot
-///
-/// A new snapshot of the subvolume `<subvolume_path>` is created at the snapshot path `<snapshot_path>/<rfc3339 UTC date>_<snapshot_suffix>` is created.
-///
-/// * `subvolume_path` - absolute path to the subvolume
-/// * `snapshot_path` - absolute path to the snapshot directory
-/// * `snapshot_suffix` - string to be appended to identify the snapshot
-///
-pub fn create_snapshot(
-    subvolume_path: &String,
-    snapshot_path: &String,
-    snapshot_suffix: &String,
-) -> Result<()> {
-    let snapshot_path_extension = format!(
-        "{}_{}",
-        Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true),
-        snapshot_suffix
-    );
-    let mut snapshot_path = PathBuf::from(&*snapshot_path);
-    let subvolume_path = PathBuf::from(&*subvolume_path);
-
-    check_dir_absolute(subvolume_path.as_path())
-        .context("subvolume_path must be an absolute path to a directory")?;
-    check_dir_absolute(snapshot_path.as_path())
-        .context("snapshot_path must be an absolute path to a directory")?;
-
-    snapshot_path.push(snapshot_path_extension);
-
-    let output = Command::new("btrfs")
-        .arg("subvolume")
-        .arg("snapshot")
-        .arg("-r")
-        .arg(subvolume_path)
-        .arg(snapshot_path)
-        .output()
-        .context("running command to create subvolume failed")?;
-
-    check_output(&output).context("output of command to create subvolume contained an error")?;
-
-    Ok(())
-}
-
-fn check_output(output: &Output) -> Result<Vec<u8>> {
-    match output.status.code() {
-        Some(code) => {
-            if code == 0 {
-                Ok(output.stdout.clone())
-            } else {
-                match String::from_utf8(output.stderr.clone()) {
-                    Ok(s) => Err(CustomError::CommandError(format!(
-                        "command finished with status code {}: {}",
-                        code, s
-                    ))
-                    .into()),
-                    Err(_) => Err(CustomError::CommandError(format!(
-                        "command finished with status code {}",
-                        code
-                    ))
-                    .into()),
-                }
-            }
-        }
-        None => Err(CustomError::CommandError("command was terminated by signal".into()).into()),
     }
 }
 
@@ -327,18 +222,18 @@ pub fn get_remote_snapshots<'a>(
 /// * `snapshots_local` - list of local snapshots
 /// * `snapshots_remote` - list of remote snapshots
 ///
-pub fn get_common_parent(
-    snapshots_local: &Vec<SnapshotLocal>,
+pub fn get_common_parent<'a>(
+    snapshots_local: &'a Vec<SnapshotLocal>,
     snapshots_remote: &Vec<SnapshotRemote>,
-) -> Result<Option<SnapshotLocal>> {
-    let mut res: Option<SnapshotLocal> = None;
+) -> Result<Option<&'a SnapshotLocal>> {
+    let mut res: Option<&SnapshotLocal> = None;
     let uuids: HashMap<&Uuid, &SnapshotLocal> =
         snapshots_local.iter().map(|e| (&e.uuid, e)).collect();
 
     for r in snapshots_remote {
         match uuids.get(&r.received_uuid) {
             Some(&e) => {
-                res = Some(e.clone());
+                res = Some(e);
             }
             _ => {}
         }

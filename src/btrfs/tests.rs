@@ -1,9 +1,108 @@
 use crate::{
     btrfs::{Btrfs, BtrfsCommands, Subvolume},
     command::{CommandMock, Context},
+    utils::SnapshotLocal,
 };
+use chrono::Utc;
 use std::str::FromStr;
 use uuid::Uuid;
+
+#[test]
+fn send_snapshot_no_parent() {
+    let context_local = Context::Local {
+        user: "test".into(),
+    };
+    let context_remote = Context::Remote {
+        user: "test2".into(),
+        host: "host1".into(),
+        identity: "/tmp/ident".into(),
+    };
+    let mut commands = vec![
+        (
+            "sudo btrfs send  \"/snapshots/to_be_sent\"".into(),
+            context_local.clone(),
+        ),
+        (
+            "sudo btrfs receive \"/backups/to_be_received\"".into(),
+            context_remote.clone(),
+        ),
+    ];
+    commands.reverse();
+    let mut btrfs = Btrfs {
+        command: Box::new(CommandMock {
+            commands,
+            responses: vec![String::new(), String::new()],
+        }),
+    };
+    let snapshot_local = SnapshotLocal {
+        path: "/snapshots/to_be_sent".into(),
+        parent_uuid: Uuid::nil(),
+        suffix: "test".into(),
+        timestamp: Utc::now().into(),
+        uuid: Uuid::nil(),
+    };
+    assert!(btrfs
+        .send_snapshot(
+            &snapshot_local,
+            &None,
+            &context_local,
+            "/backups/to_be_received",
+            &context_remote
+        )
+        .is_ok());
+}
+
+#[test]
+fn send_snapshot_parent() {
+    let context_local = Context::Local {
+        user: "test".into(),
+    };
+    let context_remote = Context::Remote {
+        user: "test2".into(),
+        host: "host1".into(),
+        identity: "/tmp/ident".into(),
+    };
+    let mut commands = vec![
+        (
+            "sudo btrfs send -p \"/snapshots/parent\" \"/snapshots/to_be_sent\"".into(),
+            context_local.clone(),
+        ),
+        (
+            "sudo btrfs receive \"/backups/to_be_received\"".into(),
+            context_remote.clone(),
+        ),
+    ];
+    commands.reverse();
+    let mut btrfs = Btrfs {
+        command: Box::new(CommandMock {
+            commands,
+            responses: vec![String::new(), String::new()],
+        }),
+    };
+    let snapshot_local = SnapshotLocal {
+        path: "/snapshots/to_be_sent".into(),
+        parent_uuid: Uuid::nil(),
+        suffix: "test".into(),
+        timestamp: Utc::now().into(),
+        uuid: Uuid::nil(),
+    };
+    let snapshot_parent = SnapshotLocal {
+        path: "/snapshots/parent".into(),
+        parent_uuid: Uuid::nil(),
+        suffix: "test".into(),
+        timestamp: Utc::now().into(),
+        uuid: Uuid::nil(),
+    };
+    assert!(btrfs
+        .send_snapshot(
+            &snapshot_local,
+            &Some(&snapshot_parent),
+            &context_local,
+            "/backups/to_be_received",
+            &context_remote
+        )
+        .is_ok());
+}
 
 #[test]
 fn delete_subvolume() {

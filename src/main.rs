@@ -67,7 +67,13 @@ fn main() -> Result<()> {
         .clone();
 
     // send remote backup
-    // send_snapshot(&latest_local_snapshot, &common_parent, &*config.backup_path, &config.config_ssh)?;
+    btrfs.send_snapshot(
+        &latest_local_snapshot,
+        &common_parent,
+        &context_local,
+        &*config.backup_path,
+        &context_remote,
+    )?;
 
     info!(
         "sent snapshot \"{}\" to \"{}\" on host \"{}\"",
