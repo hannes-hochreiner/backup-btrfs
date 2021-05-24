@@ -53,10 +53,10 @@ pub trait BtrfsCommands {
     /// * `backup_path` - base path to store the snapshot on the remote host
     /// * `context_remote` - context to execute the remote commands
     ///
-    fn send_snapshot(
+    fn send_snapshot<'a>(
         &mut self,
         local_snapshot: &SnapshotLocal,
-        common_parent: &Option<&SnapshotLocal>,
+        common_parent: Option<&'a SnapshotLocal>,
         context_local: &Context,
         backup_path: &str,
         context_remote: &Context,
@@ -146,14 +146,14 @@ impl BtrfsCommands for Btrfs {
     fn send_snapshot(
         &mut self,
         local_snapshot: &SnapshotLocal,
-        common_parent: &Option<&SnapshotLocal>,
+        common_parent: Option<&SnapshotLocal>,
         context_local: &Context,
         backup_path: &str,
         context_remote: &Context,
     ) -> Result<()> {
         let mut parent_arg = String::new();
 
-        if let &Some(parent_snapshot) = common_parent {
+        if let Some(parent_snapshot) = common_parent {
             parent_arg = format!("-p \"{}\"", parent_snapshot.path);
         }
 

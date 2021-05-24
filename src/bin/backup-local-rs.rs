@@ -1,17 +1,17 @@
 extern crate backup_local_rs;
 
-use std::env;
-use chrono::Utc;
 use anyhow::{Context, Result};
+use chrono::Utc;
 use log::{debug, info};
+use std::env;
 
-use backup_local_rs::custom_error::CustomError;
-use backup_local_rs::utils::{find_backups_to_be_deleted, get_common_parent};
 use backup_local_rs::btrfs::{Btrfs, BtrfsCommands};
-use backup_local_rs::configuration::Configuration;
-use backup_local_rs::utils;
-use backup_local_rs::utils::snapshot::{Snapshot};
 use backup_local_rs::command;
+use backup_local_rs::configuration::Configuration;
+use backup_local_rs::custom_error::CustomError;
+use backup_local_rs::utils;
+use backup_local_rs::utils::snapshot::Snapshot;
+use backup_local_rs::utils::{find_backups_to_be_deleted, get_common_parent};
 
 fn main() -> Result<()> {
     env_logger::init();
@@ -68,7 +68,7 @@ fn main() -> Result<()> {
     // send remote backup
     btrfs.send_snapshot(
         &latest_local_snapshot,
-        &common_parent,
+        common_parent,
         &context_local,
         &*config.backup_path,
         &context_remote,
@@ -107,7 +107,10 @@ fn main() -> Result<()> {
     let snapshots_delete_remote = find_backups_to_be_deleted(
         &filter_time.into(),
         &config.policy_remote,
-        &snapshots_remote.iter().map(|e| e as &dyn Snapshot).collect(),
+        &snapshots_remote
+            .iter()
+            .map(|e| e as &dyn Snapshot)
+            .collect(),
         &config.snapshot_suffix,
     )?;
 
@@ -128,7 +131,8 @@ fn main() -> Result<()> {
             .context(format!("error deleting snapshot \"{}\"", snapshot.path()))?;
         info!(
             "deleted snapshot \"{}\" on host \"{}\"",
-            snapshot.path(), config.config_ssh.remote_host
+            snapshot.path(),
+            config.config_ssh.remote_host
         );
     }
 

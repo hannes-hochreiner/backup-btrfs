@@ -1,6 +1,6 @@
-use std::{convert::TryFrom, fmt::Debug, path::Path};
-use anyhow::{Error, anyhow, Result};
+use anyhow::{anyhow, Error, Result};
 use chrono::{DateTime, FixedOffset};
+use std::{convert::TryFrom, fmt::Debug, path::Path};
 use uuid::Uuid;
 
 use crate::btrfs::Subvolume;
@@ -32,7 +32,6 @@ impl Snapshot for SnapshotLocal {
     fn suffix(&self) -> &str {
         &*self.suffix
     }
-
 }
 
 impl TryFrom<&Subvolume> for SnapshotLocal {
@@ -74,7 +73,6 @@ impl Snapshot for SnapshotRemote {
     fn suffix(&self) -> &str {
         &*self.suffix
     }
-
 }
 
 impl TryFrom<&Subvolume> for SnapshotRemote {
@@ -108,9 +106,11 @@ fn get_timestamp_suffix_from_snapshot_path(
             .ok_or(anyhow!("could not convert last path component"))?,
     );
     let mut snapshot_tokens = snapshot_name.split("_");
-    let snapshot_timestamp = DateTime::parse_from_rfc3339(snapshot_tokens.nth(0).ok_or(
-        anyhow!("could not find date part of backup name"),
-    )?)?;
+    let snapshot_timestamp = DateTime::parse_from_rfc3339(
+        snapshot_tokens
+            .nth(0)
+            .ok_or(anyhow!("could not find date part of backup name"))?,
+    )?;
 
     Ok((
         snapshot_timestamp,

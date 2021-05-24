@@ -1,17 +1,13 @@
 use crate::{btrfs::Subvolume, custom_duration::CustomDuration, custom_error::CustomError};
 use anyhow::{anyhow, Context, Result};
 use chrono::{DateTime, Duration, FixedOffset};
-use std::{
-    collections::HashMap,
-    convert::{TryInto},
-    path::Path,
-};
+use std::{collections::HashMap, convert::TryInto, path::Path};
 use uuid::Uuid;
+pub mod snapshot;
 #[cfg(test)]
 mod tests;
-pub mod snapshot;
-use snapshot::{SnapshotLocal, SnapshotRemote};
 use self::snapshot::Snapshot;
+use snapshot::{SnapshotLocal, SnapshotRemote};
 
 fn check_dir_absolute(path: &Path) -> Result<()> {
     if !path.is_dir() {
@@ -62,7 +58,7 @@ pub fn find_backups_to_be_deleted<'a>(
                 let pol: Duration = p.try_into().context(format!(
                     "could not convert custom interval ({:?}) into chrono::interval",
                     p
-                ))?;    
+                ))?;
 
                 println!("time: {}", *current_timestamp - *backup.timestamp());
                 if *current_timestamp - *backup.timestamp() > pol {

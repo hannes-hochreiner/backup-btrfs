@@ -44,7 +44,7 @@ fn send_snapshot_no_parent() {
     assert!(btrfs
         .send_snapshot(
             &snapshot_local,
-            &None,
+            None,
             &context_local,
             "/backups/to_be_received",
             &context_remote
@@ -96,7 +96,7 @@ fn send_snapshot_parent() {
     assert!(btrfs
         .send_snapshot(
             &snapshot_local,
-            &Some(&snapshot_parent),
+            Some(&snapshot_parent),
             &context_local,
             "/backups/to_be_received",
             &context_remote
