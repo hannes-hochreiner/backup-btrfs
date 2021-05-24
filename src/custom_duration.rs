@@ -87,7 +87,7 @@ impl TryFrom<&CustomDuration> for Duration {
 mod tests {
     use std::convert::TryInto;
 
-    use crate::CustomDuration;
+    use crate::custom_duration::CustomDuration;
     use chrono::Duration;
 
     #[test]

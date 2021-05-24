@@ -1,19 +1,17 @@
+extern crate backup_local_rs;
+
 use std::env;
-mod custom_error;
 use chrono::Utc;
-use custom_error::CustomError;
-mod utils;
 use anyhow::{Context, Result};
-use utils::{find_backups_to_be_deleted, get_common_parent};
-mod custom_duration;
-use custom_duration::CustomDuration;
 use log::{debug, info};
-mod btrfs;
-use btrfs::{Btrfs, BtrfsCommands};
-mod command;
-mod configuration;
-use configuration::Configuration;
-use crate::utils::snapshot::{Snapshot};
+
+use backup_local_rs::custom_error::CustomError;
+use backup_local_rs::utils::{find_backups_to_be_deleted, get_common_parent};
+use backup_local_rs::btrfs::{Btrfs, BtrfsCommands};
+use backup_local_rs::configuration::Configuration;
+use backup_local_rs::utils;
+use backup_local_rs::utils::snapshot::{Snapshot};
+use backup_local_rs::command;
 
 fn main() -> Result<()> {
     env_logger::init();

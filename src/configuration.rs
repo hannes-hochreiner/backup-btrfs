@@ -1,4 +1,4 @@
-use crate::CustomDuration;
+use crate::custom_duration::CustomDuration;
 use anyhow::{Context, Result};
 use serde::Deserialize;
 use std::fs::File;
