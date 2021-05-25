@@ -60,7 +60,7 @@ fn create_snapshot() {
 }
 
 #[test]
-fn send_snapshot<'a>() {
+fn send_snapshot_parent() {
     let mut mock = MockBtrfs::new();
     let subvolume_path = "/subvolume/path";
     let backup_path = "/backup/path";
@@ -73,6 +73,7 @@ fn send_snapshot<'a>() {
         identity: "remote_identity".into(),
     };
     let parent_uuid = Uuid::parse_str("5f0b151b-52e4-4445-aa94-d07056733a1f").unwrap();
+    let snapshot_uuid = Uuid::parse_str("5f0b151b-52e4-4445-aa94-d07056733a1e").unwrap();
 
     let mut seq = Sequence::new();
 
@@ -92,7 +93,78 @@ fn send_snapshot<'a>() {
                     parent_uuid: Some(parent_uuid),
                     path: "/other/2020-05-10T12:00:00Z_test".into(),
                     received_uuid: None,
-                    uuid: Uuid::nil(),
+                    uuid: snapshot_uuid.clone(),
+                },
+            ])
+        });
+
+    mock.expect_get_subvolumes()
+        .times(1)
+        .with(eq(context_remote.clone()))
+        .in_sequence(&mut seq)
+        .returning(move |_| {
+            Ok(vec![Subvolume {
+                parent_uuid: None,
+                received_uuid: Some(snapshot_uuid),
+                path: "/backup/path/2019-05-10T12:00:00Z_test".into(),
+                uuid: Uuid::nil(),
+            }])
+        });
+
+    mock.expect_send_snapshot()
+        .times(1)
+        .withf(|local_snapshot, common_parent, _, backup_path, _| {
+            local_snapshot.path == "/other/2020-05-10T12:00:00Z_test"
+                && common_parent.is_some()
+                && backup_path == "/backup/path"
+        })
+        .in_sequence(&mut seq)
+        .returning(|_, _, _, _, _| Ok(()));
+
+    let mut actions = ActionsSystem {
+        btrfs: Box::new(mock),
+    };
+
+    actions
+        .send_snapshot(subvolume_path, backup_path, &context_local, &context_remote)
+        .unwrap();
+}
+
+#[test]
+fn send_snapshot_no_parent() {
+    let mut mock = MockBtrfs::new();
+    let subvolume_path = "/subvolume/path";
+    let backup_path = "/backup/path";
+    let context_local = Context::Local {
+        user: "test_user".into(),
+    };
+    let context_remote = Context::Remote {
+        user: "remote_user".into(),
+        host: "remote_host".into(),
+        identity: "remote_identity".into(),
+    };
+    let parent_uuid = Uuid::parse_str("5f0b151b-52e4-4445-aa94-d07056733a1f").unwrap();
+    let snapshot_uuid = Uuid::parse_str("5f0b151b-52e4-4445-aa94-d07056733a1e").unwrap();
+
+    let mut seq = Sequence::new();
+
+    mock.expect_get_subvolumes()
+        .times(1)
+        .with(eq(context_local.clone()))
+        .in_sequence(&mut seq)
+        .returning(move |_| {
+            Ok(vec![
+                Subvolume {
+                    parent_uuid: None,
+                    path: "/subvolume/path".into(),
+                    received_uuid: None,
+                    uuid: parent_uuid.clone(),
+                },
+                Subvolume {
+                    parent_uuid: Some(parent_uuid),
+                    path: "/other/2020-05-10T12:00:00Z_test".into(),
+                    received_uuid: None,
+                    uuid: snapshot_uuid.clone(),
                 },
             ])
         });
@@ -105,7 +177,7 @@ fn send_snapshot<'a>() {
             Ok(vec![Subvolume {
                 parent_uuid: None,
                 received_uuid: Some(parent_uuid),
-                path: "backup/path/2019-05-10T12:00:00Z_test".into(),
+                path: "/backup/path/2019-05-10T12:00:00Z_test".into(),
                 uuid: Uuid::nil(),
             }])
         });
