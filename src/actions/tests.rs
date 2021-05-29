@@ -4,8 +4,10 @@ use uuid::Uuid;
 use super::{Actions, ActionsSystem};
 use crate::btrfs::{BtrfsCommands, Subvolume};
 use crate::command::Context;
+use crate::custom_duration::CustomDuration;
 use crate::utils::snapshot::SnapshotLocal;
 use anyhow::Result;
+use chrono::{TimeZone, Utc};
 
 mock! {
     Btrfs {}
@@ -198,5 +200,60 @@ fn send_snapshot_no_parent() {
 
     actions
         .send_snapshot(subvolume_path, backup_path, &context_local, &context_remote)
+        .unwrap();
+}
+
+#[test]
+fn police_local_snapshots() {
+    let mut mock = MockBtrfs::new();
+
+    let context = Context::Local {
+        user: "test_user".into(),
+    };
+    let suffix = "test2";
+    let parent_uuid = Uuid::parse_str("5f0b151b-52e4-4445-aa94-d07056733a1f").unwrap();
+    let latest_local_snapshot = Subvolume {
+        parent_uuid: Some(parent_uuid),
+        path: "/snapshots/home/2020-05-01T13:00:00Z_test2".into(),
+        received_uuid: None,
+        uuid: Uuid::nil(),
+    };
+    let policy = vec![CustomDuration::minutes(10)];
+    let timestamp = Utc.ymd(2020, 5, 10).and_hms(12, 0, 0);
+    let mut seq = Sequence::new();
+
+    mock.expect_get_subvolumes()
+        .times(1)
+        .with(eq(context.clone()))
+        .in_sequence(&mut seq)
+        .returning(move |_| {
+            Ok(vec![
+                Subvolume {
+                    parent_uuid: None,
+                    path: "/subvolume/path".into(),
+                    received_uuid: None,
+                    uuid: parent_uuid.clone(),
+                },
+                Subvolume {
+                    parent_uuid: Some(parent_uuid),
+                    path: "/other/2020-05-10T12:00:00Z_test".into(),
+                    received_uuid: None,
+                    uuid: Uuid::parse_str("4f0b151b-52e4-4445-aa94-d07056733a1f").unwrap(),
+                },
+            ])
+        });
+
+    let mut actions = ActionsSystem {
+        btrfs: Box::new(mock),
+    };
+
+    actions
+        .police_snapshots(
+            &context,
+            &latest_local_snapshot,
+            &policy,
+            &timestamp.into(),
+            suffix,
+        )
         .unwrap();
 }

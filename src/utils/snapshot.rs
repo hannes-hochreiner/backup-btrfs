@@ -9,6 +9,7 @@ pub trait Snapshot {
     fn path(&self) -> &str;
     fn timestamp(&self) -> &DateTime<FixedOffset>;
     fn suffix(&self) -> &str;
+    fn uuid(&self) -> &Uuid;
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -31,6 +32,10 @@ impl Snapshot for SnapshotLocal {
 
     fn suffix(&self) -> &str {
         &*self.suffix
+    }
+
+    fn uuid(&self) -> &Uuid {
+        &self.uuid
     }
 }
 
@@ -72,6 +77,10 @@ impl Snapshot for SnapshotRemote {
 
     fn suffix(&self) -> &str {
         &*self.suffix
+    }
+
+    fn uuid(&self) -> &Uuid {
+        &self.uuid
     }
 }
 
