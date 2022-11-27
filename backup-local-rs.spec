@@ -5,7 +5,7 @@
 %global crate backup-local-rs
 
 Name:           rust-%{crate}
-Version:        0.0.0
+Version:        %{version}
 Release:        1%{?dist}
 Summary:        Daemon to create local backups.
 
