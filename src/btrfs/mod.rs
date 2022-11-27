@@ -161,6 +161,11 @@ impl BtrfsCommands for Btrfs {
         backup_path: &str,
         context_remote: &Context,
     ) -> Result<()> {
+        log::debug!(
+            "sending snapshot: \"{}\" to \"{}\"",
+            local_snapshot.path,
+            backup_path
+        );
         let mut parent_arg = String::new();
 
         if let Some(parent_snapshot) = common_parent {
