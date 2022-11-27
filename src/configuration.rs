@@ -11,6 +11,7 @@ pub struct Configuration {
     pub user_local: String,
     pub policy_local: Vec<CustomDuration>,
     pub config_ssh: ConfigurationSsh,
+    pub backup_subvolume_path: String,
     pub backup_path: String,
     pub policy_remote: Vec<CustomDuration>,
 }

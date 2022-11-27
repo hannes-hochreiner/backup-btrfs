@@ -12,7 +12,7 @@ use chrono::{TimeZone, Utc};
 mock! {
     Btrfs {}
     impl BtrfsCommands for Btrfs {
-        fn get_subvolumes(&mut self, context: &Context) -> Result<Vec<Subvolume>>;
+        fn get_subvolumes(&mut self, subvolume_path: &str, context: &Context) -> Result<Vec<Subvolume>>;
         fn create_snapshot(
             &mut self,
             subvolume_path: &str,
@@ -66,6 +66,7 @@ fn send_snapshot_parent() {
     let mut mock = MockBtrfs::new();
     let subvolume_path = "/subvolume/path";
     let backup_path = "/backup/path";
+    let backup_subvolume_path = "/";
     let context_local = Context::Local {
         user: "test_user".into(),
     };
@@ -81,9 +82,9 @@ fn send_snapshot_parent() {
 
     mock.expect_get_subvolumes()
         .times(1)
-        .with(eq(context_local.clone()))
+        .with(eq(subvolume_path), eq(context_local.clone()))
         .in_sequence(&mut seq)
-        .returning(move |_| {
+        .returning(move |_, _| {
             Ok(vec![
                 Subvolume {
                     parent_uuid: None,
@@ -102,9 +103,9 @@ fn send_snapshot_parent() {
 
     mock.expect_get_subvolumes()
         .times(1)
-        .with(eq(context_remote.clone()))
+        .with(eq(backup_subvolume_path), eq(context_remote.clone()))
         .in_sequence(&mut seq)
-        .returning(move |_| {
+        .returning(move |_, _| {
             Ok(vec![Subvolume {
                 parent_uuid: None,
                 received_uuid: Some(snapshot_uuid),
@@ -128,7 +129,13 @@ fn send_snapshot_parent() {
     };
 
     actions
-        .send_snapshot(subvolume_path, backup_path, &context_local, &context_remote)
+        .send_snapshot(
+            subvolume_path,
+            backup_path,
+            &context_local,
+            backup_subvolume_path,
+            &context_remote,
+        )
         .unwrap();
 }
 
@@ -136,6 +143,7 @@ fn send_snapshot_parent() {
 fn send_snapshot_no_parent() {
     let mut mock = MockBtrfs::new();
     let subvolume_path = "/subvolume/path";
+    let backup_subvolume_path = "/";
     let backup_path = "/backup/path";
     let context_local = Context::Local {
         user: "test_user".into(),
@@ -152,9 +160,9 @@ fn send_snapshot_no_parent() {
 
     mock.expect_get_subvolumes()
         .times(1)
-        .with(eq(context_local.clone()))
+        .with(eq(subvolume_path), eq(context_local.clone()))
         .in_sequence(&mut seq)
-        .returning(move |_| {
+        .returning(move |_, _| {
             Ok(vec![
                 Subvolume {
                     parent_uuid: None,
@@ -173,9 +181,9 @@ fn send_snapshot_no_parent() {
 
     mock.expect_get_subvolumes()
         .times(1)
-        .with(eq(context_remote.clone()))
+        .with(eq(backup_subvolume_path), eq(context_remote.clone()))
         .in_sequence(&mut seq)
-        .returning(move |_| {
+        .returning(move |_, _| {
             Ok(vec![Subvolume {
                 parent_uuid: None,
                 received_uuid: Some(parent_uuid),
@@ -199,7 +207,13 @@ fn send_snapshot_no_parent() {
     };
 
     actions
-        .send_snapshot(subvolume_path, backup_path, &context_local, &context_remote)
+        .send_snapshot(
+            subvolume_path,
+            backup_path,
+            &context_local,
+            backup_subvolume_path,
+            &context_remote,
+        )
         .unwrap();
 }
 
@@ -221,12 +235,13 @@ fn police_local_snapshots() {
     let policy = vec![CustomDuration::minutes(10)];
     let timestamp = Utc.ymd(2020, 5, 10).and_hms(12, 0, 0);
     let mut seq = Sequence::new();
+    let subvolume_path = "/";
 
     mock.expect_get_subvolumes()
         .times(1)
-        .with(eq(context.clone()))
+        .with(eq(subvolume_path), eq(context.clone()))
         .in_sequence(&mut seq)
-        .returning(move |_| {
+        .returning(move |_, _| {
             Ok(vec![
                 Subvolume {
                     parent_uuid: None,
@@ -249,6 +264,7 @@ fn police_local_snapshots() {
 
     actions
         .police_snapshots(
+            subvolume_path,
             &context,
             &latest_local_snapshot,
             &policy,

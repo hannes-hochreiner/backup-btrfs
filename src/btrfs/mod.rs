@@ -15,9 +15,11 @@ mod tests;
 pub trait BtrfsCommands {
     /// Get subvolumes
     ///
+    /// * `subvolume_path` - path of the btrfs subvolume
     /// * `context` - context in which to execute the command
     ///
-    fn get_subvolumes(&mut self, context: &Context) -> Result<Vec<Subvolume>>;
+    fn get_subvolumes(&mut self, subvolume_path: &str, context: &Context)
+        -> Result<Vec<Subvolume>>;
     /// Create a snapshot locally
     ///
     /// The new snapshot will be created at the path `<snapshot_path>/<timestamp in rfc3339 format (UTC)>_<suffix>`.
@@ -84,10 +86,18 @@ impl Default for Btrfs {
 }
 
 impl BtrfsCommands for Btrfs {
-    fn get_subvolumes(&mut self, context: &Context) -> Result<Vec<Subvolume>> {
-        let output = self
-            .command
-            .run("sudo btrfs subvolume list -tupqR --sort=rootid /", context)?;
+    fn get_subvolumes(
+        &mut self,
+        subvolume_path: &str,
+        context: &Context,
+    ) -> Result<Vec<Subvolume>> {
+        let output = self.command.run(
+            &format!(
+                "sudo btrfs subvolume list -tupqR --sort=rootid {}",
+                subvolume_path
+            ),
+            context,
+        )?;
 
         self.extract_subvolumes(&output)
     }

@@ -1,25 +1,13 @@
-use crate::{btrfs::Subvolume, custom_duration::CustomDuration, custom_error::CustomError};
+use crate::{btrfs::Subvolume, custom_duration::CustomDuration};
 use anyhow::{anyhow, Context, Result};
 use chrono::{DateTime, Duration, FixedOffset};
-use std::{collections::HashMap, convert::TryInto, path::Path};
+use std::{collections::HashMap, convert::TryInto};
 use uuid::Uuid;
 pub mod snapshot;
 #[cfg(test)]
 mod tests;
 use self::snapshot::Snapshot;
 use snapshot::{SnapshotLocal, SnapshotRemote};
-
-fn check_dir_absolute(path: &Path) -> Result<()> {
-    if !path.is_dir() {
-        return Err(CustomError::ConfigurationError("path is not a directory".into()).into());
-    }
-
-    if !path.is_absolute() {
-        return Err(CustomError::ConfigurationError("path is not an absolute path".into()).into());
-    }
-
-    Ok(())
-}
 
 /// Return a list of backups to be deleted
 ///

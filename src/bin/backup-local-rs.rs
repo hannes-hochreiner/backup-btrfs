@@ -42,14 +42,14 @@ fn main() -> Result<()> {
     info!("created new snapshot");
 
     // get local snapshots
-    let subvolumes_local = btrfs.get_subvolumes(&context_local)?;
+    let subvolumes_local = btrfs.get_subvolumes(&config.subvolume_path, &context_local)?;
     let subvolume_backup =
         utils::get_subvolume_by_path(&config.subvolume_path, &mut subvolumes_local.iter())?;
     let snapshots_local =
         utils::get_local_snapshots(subvolume_backup, &mut subvolumes_local.iter())?;
 
     // get remote snapshots
-    let subvolumes_remote = btrfs.get_subvolumes(&context_remote)?;
+    let subvolumes_remote = btrfs.get_subvolumes(&config.backup_subvolume_path, &context_remote)?;
     let snapshots_remote = utils::get_remote_snapshots(&mut subvolumes_remote.iter())?;
 
     // find common parent
@@ -100,7 +100,7 @@ fn main() -> Result<()> {
     }
 
     // get remote snapshots again
-    let subvolumes_remote = btrfs.get_subvolumes(&context_remote)?;
+    let subvolumes_remote = btrfs.get_subvolumes(&config.backup_subvolume_path, &context_remote)?;
     let snapshots_remote = utils::get_remote_snapshots(&mut subvolumes_remote.iter())?;
 
     // review remote snapshots

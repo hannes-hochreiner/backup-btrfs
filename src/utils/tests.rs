@@ -1,4 +1,7 @@
+use std::str::FromStr;
+
 use crate::{
+    btrfs::Subvolume,
     custom_duration::CustomDuration,
     utils::{Snapshot, SnapshotLocal, SnapshotRemote},
 };
@@ -7,7 +10,36 @@ use uuid::Uuid;
 
 #[test]
 fn get_subvolume_by_path() {
-    todo!()
+    let subvolumes = vec![
+        Subvolume {
+            uuid: Uuid::from_str("0b5cc138-af8e-2744-be4f-bdede1b509ef").unwrap(),
+            path: String::from("/root"),
+            parent_uuid: None,
+            received_uuid: None,
+        },
+        Subvolume {
+            uuid: Uuid::from_str("574fef8d-7951-3e45-aa29-7167b9d4590a").unwrap(),
+            path: String::from("/var/lib/portables"),
+            parent_uuid: None,
+            received_uuid: None,
+        },
+        Subvolume {
+            uuid: Uuid::from_str("d1bd727c-8a02-bb44-bdd2-bae468651e98").unwrap(),
+            path: String::from("/backups/2021-05-04T19:48:42Z_inf_btrfs_test"),
+            parent_uuid: None,
+            received_uuid: Some(Uuid::from_str("dc4e1039-9241-cd47-9c10-a5d1ce15ba20").unwrap()),
+        },
+    ];
+
+    assert_eq!(
+        crate::utils::get_subvolume_by_path(
+            "/backups/2021-05-04T19:48:42Z_inf_btrfs_test",
+            &mut subvolumes.iter(),
+        )
+        .unwrap()
+        .uuid,
+        subvolumes[2].uuid,
+    );
 }
 
 #[test]
@@ -348,12 +380,4 @@ fn find_backups_to_be_deleted_4() {
         res[4].path(),
         "/snapshots/2019-12-31T09:00:00Z_host_subvolume"
     );
-}
-
-#[test]
-fn get_timestamp_suffix_from_snapshot_path() {
-    todo!()
-    // let (timestamp, suffix) = crate::utils::snapshot::get_timestamp_suffix_from_snapshot_path(&String::from("/opt/snapshots/2021-05-12T04:23:12Z_exo_btrfs_test")).unwrap();
-    // assert_eq!(Utc.ymd(2021, 05, 12).and_hms(4, 23, 12), timestamp);
-    // assert_eq!(String::from("exo_btrfs_test"), suffix);
 }

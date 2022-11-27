@@ -201,7 +201,7 @@ fn get_local_subvolumes() {
     };
 
     assert_eq!(
-        btrfs.get_subvolumes(&ctx).unwrap(),
+        btrfs.get_subvolumes("/", &ctx).unwrap(),
         vec![
             Subvolume {
                 uuid: Uuid::from_str("11eed410-7829-744e-8288-35c21d278f8e").unwrap(),
@@ -263,7 +263,7 @@ fn get_remote_subvolumes() {
     };
 
     assert_eq!(
-        btrfs.get_subvolumes(&ctx).unwrap(),
+        btrfs.get_subvolumes("/", &ctx).unwrap(),
         vec![
             Subvolume {
                 uuid: Uuid::from_str("0b5cc138-af8e-2744-be4f-bdede1b509ef").unwrap(),

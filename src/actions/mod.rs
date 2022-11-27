@@ -24,12 +24,21 @@ pub trait Actions {
     ) -> Result<()>;
     fn send_snapshot(
         &mut self,
-        subvolume_path: &str,
+        local_subvolume_path: &str,
         backup_path: &str,
         context_local: &Context,
+        remote_subvolume_path: &str,
         context_remote: &Context,
     ) -> Result<()>;
-    fn police_snapshots(&mut self, context: &Context, latest_local_snapshot: &Subvolume, policy: &Vec<CustomDuration>, timestamp: &DateTime<FixedOffset>, suffix: &str) -> Result<()>;
+    fn police_snapshots(
+        &mut self,
+        subvolume_path: &str,
+        context: &Context,
+        latest_local_snapshot: &Subvolume,
+        policy: &Vec<CustomDuration>,
+        timestamp: &DateTime<FixedOffset>,
+        suffix: &str,
+    ) -> Result<()>;
 }
 
 pub struct ActionsSystem {
@@ -58,22 +67,27 @@ impl Actions for ActionsSystem {
 
     fn send_snapshot(
         &mut self,
-        subvolume_path: &str,
+        local_subvolume_path: &str,
         backup_path: &str,
         context_local: &Context,
+        remote_subvolume_path: &str,
         context_remote: &Context,
     ) -> Result<()> {
         // get local snapshots
-        let subvolumes_local = self.btrfs.get_subvolumes(&context_local)?;
+        let subvolumes_local = self
+            .btrfs
+            .get_subvolumes(local_subvolume_path, &context_local)?;
         let subvolume_backup =
-            crate::utils::get_subvolume_by_path(subvolume_path, &mut subvolumes_local.iter())
+            crate::utils::get_subvolume_by_path(local_subvolume_path, &mut subvolumes_local.iter())
                 .context("failed to get subvolume by path")?;
         let snapshots_local =
             crate::utils::get_local_snapshots(subvolume_backup, &mut subvolumes_local.iter())
                 .context("failed to get local snapshots from subvolumes")?;
 
         // get remote snapshots
-        let subvolumes_remote = self.btrfs.get_subvolumes(&context_remote)?;
+        let subvolumes_remote = self
+            .btrfs
+            .get_subvolumes(remote_subvolume_path, &context_remote)?;
         let snapshots_remote = crate::utils::get_remote_snapshots(&mut subvolumes_remote.iter())?;
 
         // find common parent
@@ -101,28 +115,43 @@ impl Actions for ActionsSystem {
         Ok(())
     }
 
-    fn police_snapshots(&mut self, context: &Context, latest_local_snapshot: &Subvolume, policy: &Vec<CustomDuration>, timestamp: &DateTime<FixedOffset>, suffix: &str) -> Result<()> {
+    fn police_snapshots(
+        &mut self,
+        subvolume_path: &str,
+        context: &Context,
+        latest_local_snapshot: &Subvolume,
+        policy: &Vec<CustomDuration>,
+        timestamp: &DateTime<FixedOffset>,
+        suffix: &str,
+    ) -> Result<()> {
         // get snapshots
-        let subvolumes = self.btrfs.get_subvolumes(&context)?;
+        let subvolumes = self.btrfs.get_subvolumes(subvolume_path, &context)?;
         let snapshots: Vec<&dyn Snapshot>;
         let latest_snapshot_uuid;
         let snapshots_local;
         let snapshots_remote;
 
         match context {
-            &Context::Local {..} => {
-                snapshots_local = crate::utils::get_local_snapshots(&latest_local_snapshot,&mut subvolumes.iter())?;
+            &Context::Local { .. } => {
+                snapshots_local = crate::utils::get_local_snapshots(
+                    &latest_local_snapshot,
+                    &mut subvolumes.iter(),
+                )?;
                 snapshots = snapshots_local.iter().map(|e| e as &dyn Snapshot).collect();
                 latest_snapshot_uuid = latest_local_snapshot.uuid;
-            },
-            &Context::Remote {..} => {
+            }
+            &Context::Remote { .. } => {
                 snapshots_remote = crate::utils::get_remote_snapshots(&mut subvolumes.iter())?;
-                latest_snapshot_uuid = snapshots_remote.iter().find(|e| e.received_uuid == latest_local_snapshot.uuid)
-                .ok_or(anyhow!(
-                    "common snapshot not found"
-                ))?.uuid;
-                snapshots = snapshots_remote.iter().map(|e| e as &dyn Snapshot).collect();
-            },
+                latest_snapshot_uuid = snapshots_remote
+                    .iter()
+                    .find(|e| e.received_uuid == latest_local_snapshot.uuid)
+                    .ok_or(anyhow!("common snapshot not found"))?
+                    .uuid;
+                snapshots = snapshots_remote
+                    .iter()
+                    .map(|e| e as &dyn Snapshot)
+                    .collect();
+            }
         }
 
         // review remote snapshots
