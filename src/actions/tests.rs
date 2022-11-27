@@ -233,7 +233,7 @@ fn police_local_snapshots() {
         uuid: Uuid::nil(),
     };
     let policy = vec![CustomDuration::minutes(10)];
-    let timestamp = Utc.ymd(2020, 5, 10).and_hms(12, 0, 0);
+    let timestamp = Utc.with_ymd_and_hms(2020, 5, 10, 12, 0, 0).unwrap();
     let mut seq = Sequence::new();
     let subvolume_path = "/";
 
