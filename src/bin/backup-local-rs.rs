@@ -93,6 +93,8 @@ fn main() -> Result<()> {
         .iter()
         .filter(|&e| e.path() != latest_local_snapshot.path)
     {
+        log::debug!("local snapshot to be deleted: {}", snapshot.path());
+
         btrfs
             .delete_subvolume(snapshot.path(), &context_local)
             .context(format!("error deleting snapshot \"{}\"", snapshot.path()))?;
