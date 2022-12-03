@@ -9,11 +9,6 @@ use crate::utils::snapshot::Snapshot;
 #[cfg(test)]
 mod tests;
 
-pub enum Mode {
-    Server,
-    Client,
-}
-
 pub trait Actions {
     fn create_snapshot(
         &mut self,
