@@ -7,6 +7,7 @@ pub enum CustomError {
     CommandError(String),
     DurationConversionError,
     SnapshotError(String),
+    MountParsingError(String),
 }
 
 impl Error for CustomError {}
@@ -17,6 +18,7 @@ impl Display for CustomError {
             CustomError::ExtractionError(s)
             | CustomError::ConfigurationError(s)
             | CustomError::CommandError(s)
+            | CustomError::MountParsingError(s)
             | CustomError::SnapshotError(s) => f.write_str(&*s),
             CustomError::DurationConversionError => {
                 f.write_str("Duration Conversion Error: overflow")

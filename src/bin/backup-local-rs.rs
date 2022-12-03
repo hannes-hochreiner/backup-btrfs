@@ -39,7 +39,13 @@ fn main() -> Result<()> {
         &context_local,
     )?;
 
+    // TODO: print new snapshot path
     info!("created new snapshot");
+
+    // TODO: get local snapshots
+    //  TODO: get source subvolume uuid
+    //  TODO: get destination subvolume snapshots
+    //  TODO: filter destination subvolume snapshots by source subvolume uuid
 
     // get local snapshots
     let subvolumes_local = btrfs.get_subvolumes(&config.dst_subvolume_path, &context_local)?;

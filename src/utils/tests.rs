@@ -3,7 +3,7 @@ use std::str::FromStr;
 use crate::{
     btrfs::Subvolume,
     custom_duration::CustomDuration,
-    utils::{Snapshot, SnapshotLocal, SnapshotRemote},
+    utils::{MountInformation, Snapshot, SnapshotLocal, SnapshotRemote},
 };
 use chrono::{TimeZone, Utc};
 use uuid::Uuid;
@@ -380,4 +380,88 @@ fn find_backups_to_be_deleted_4() {
         res[4].path(),
         "/snapshots/2019-12-31T09:00:00Z_host_subvolume"
     );
+}
+
+#[test]
+fn get_btrfs_mount_information() {
+    let command_output = r"/dev/mapper/data on /data type btrfs (rw,relatime,space_cache=v2,subvolid=5,subvol=/)
+/dev/mapper/luks-0f3f6c5e-621a-40d8-8be8-c372eaf2d616 on / type btrfs (rw,relatime,seclabel,compress=zstd:1,ssd,space_cache,subvolid=11858,subvol=/root)
+/dev/mapper/luks-0f3f6c5e-621a-40d8-8be8-c372eaf2d616 on /home type btrfs (rw,relatime,seclabel,compress=zstd:1,ssd,space_cache,subvolid=256,subvol=/home)
+/dev/mapper/luks-0f3f6c5e-621a-40d8-8be8-c372eaf2d616 on /var/lib/docker/btrfs type btrfs (rw,relatime,seclabel,compress=zstd:1,ssd,space_cache,subvolid=11858,subvol=/root)
+";
+    let mi = super::get_btrfs_mount_information(command_output).unwrap();
+
+    let check = vec![
+        MountInformation {
+            device: "/dev/mapper/data".to_string(),
+            fs_type: "btrfs".to_string(),
+            mount_point: "/data".to_string(),
+            properties: vec![
+                ("rw".to_string(), None),
+                ("relatime".to_string(), None),
+                ("space_cache".to_string(), Some("v2".to_string())),
+                ("subvolid".to_string(), Some("5".to_string())),
+                ("subvol".to_string(), Some("/".to_string())),
+            ]
+            .iter()
+            .cloned()
+            .collect(),
+        },
+        MountInformation {
+            device: "/dev/mapper/luks-0f3f6c5e-621a-40d8-8be8-c372eaf2d616".to_string(),
+            fs_type: "btrfs".to_string(),
+            mount_point: "/".to_string(),
+            properties: vec![
+                ("rw".to_string(), None),
+                ("seclabel".to_string(), None),
+                ("compress".to_string(), Some("zstd:1".to_string())),
+                ("ssd".to_string(), None),
+                ("space_cache".to_string(), None),
+                ("subvolid".to_string(), Some("11858".to_string())),
+                ("subvol".to_string(), Some("/root".to_string())),
+                ("relatime".to_string(), None),
+            ]
+            .iter()
+            .cloned()
+            .collect(),
+        },
+        MountInformation {
+            device: "/dev/mapper/luks-0f3f6c5e-621a-40d8-8be8-c372eaf2d616".to_string(),
+            fs_type: "btrfs".to_string(),
+            mount_point: "/home".to_string(),
+            properties: vec![
+                ("rw".to_string(), None),
+                ("seclabel".to_string(), None),
+                ("compress".to_string(), Some("zstd:1".to_string())),
+                ("ssd".to_string(), None),
+                ("space_cache".to_string(), None),
+                ("subvolid".to_string(), Some("256".to_string())),
+                ("subvol".to_string(), Some("/home".to_string())),
+                ("relatime".to_string(), None),
+            ]
+            .iter()
+            .cloned()
+            .collect(),
+        },
+        MountInformation {
+            device: "/dev/mapper/luks-0f3f6c5e-621a-40d8-8be8-c372eaf2d616".to_string(),
+            fs_type: "btrfs".to_string(),
+            mount_point: "/var/lib/docker/btrfs".to_string(),
+            properties: vec![
+                ("rw".to_string(), None),
+                ("seclabel".to_string(), None),
+                ("compress".to_string(), Some("zstd:1".to_string())),
+                ("ssd".to_string(), None),
+                ("space_cache".to_string(), None),
+                ("subvolid".to_string(), Some("11858".to_string())),
+                ("subvol".to_string(), Some("/root".to_string())),
+                ("relatime".to_string(), None),
+            ]
+            .iter()
+            .cloned()
+            .collect(),
+        },
+    ];
+
+    assert_eq!(mi, check);
 }
