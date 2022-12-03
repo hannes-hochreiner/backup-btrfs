@@ -58,8 +58,7 @@ impl CommandSystem {
         let output = child
             .ok_or(anyhow!("error executing command"))?
             .wait_with_output()?;
-        let output = check_output(&output)
-            .context("output of command to delete a snapshot contained an error")?;
+        let output = check_output(&output).context("output of command contained an error")?;
 
         Ok(String::from_utf8(output)?)
     }
@@ -103,7 +102,7 @@ impl CommandSystem {
         com.stdout(process::Stdio::piped())
             .arg(command)
             .spawn()
-            .context("error executing command")
+            .context(format!("error executing command: {}", command))
     }
 }
 
