@@ -1,0 +1,32 @@
+digraph {
+  fontname="Roboto,sans-serif"
+
+  subgraph cluster_0 {
+    label="Host 1";
+    class="group_host_1";
+  
+    tbb [label="subvolume to be backed up"];
+    sh11 [label="snapshot 1"];
+    sh12 [label="snapshot 2"];
+    sh1n [label="snapshot n"];
+
+    tbb -> sh11;
+    tbb -> sh12;
+    tbb -> sh1n;
+  }
+
+  subgraph cluster_1 {
+    label="Host 2";
+    class="group_host_2";
+
+    sh21 [label="snapshot 1"];
+    sh22 [label="snapshot 2"];
+    sh23 [label="snapshot 3"];
+    sh24 [label="snapshot 4"];
+    sh2n [label="snapshot n"];
+  }
+
+  sh11 -> sh21;
+  sh12 -> sh22;
+  sh1n -> sh23;
+}

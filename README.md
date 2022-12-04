@@ -22,6 +22,21 @@ The system will be written in Rust.
 It will use the btrfs tools for making the backup.
 Execution of the system will be triggered by systemd.
 
+## Architecture
+
+The system involves two hosts:
+* host 1: the host having the subvolume that should be backed up
+* host 2: the host that will store the backups
+
+First a snapshot of the subvolume will be created on host 1.
+The snapshot will then be transferred to host 2.
+If host 2 already contains a suitable parent snapshot, an incremental transfer will be made.
+Otherwise, a complete transfer will be made.
+Finally, the retention policies for snapshots will be applied to both hosts.
+Typically, only a few recent snapshots will be kept on host 1, while host 2 keeps snapshots for a longer time.
+
+![architecture diagram](docs/bld/architecture.svg)
+
 ## Deployment
 
 The program can be installed via cargo from the GitHub repository.
