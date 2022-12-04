@@ -16,7 +16,7 @@ pub trait Actions {
         snapshot_path: &str,
         snapshot_suffix: &str,
         context: &Context,
-    ) -> Result<()>;
+    ) -> Result<String>;
     fn send_snapshot(
         &mut self,
         local_subvolume_path: &str,
@@ -55,7 +55,7 @@ impl Actions for ActionsSystem {
         snapshot_path: &str,
         snapshot_suffix: &str,
         context: &Context,
-    ) -> Result<()> {
+    ) -> Result<String> {
         self.btrfs
             .create_snapshot(subvolume_path, snapshot_path, snapshot_suffix, context)
     }

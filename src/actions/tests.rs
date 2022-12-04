@@ -19,7 +19,7 @@ mock! {
             snapshot_path: &str,
             snapshot_suffix: &str,
             context: &Context,
-        ) -> Result<()>;
+        ) -> Result<String>;
         fn delete_subvolume(&mut self, subvolume: &str, context: &Context) -> Result<()>;
         fn send_snapshot<'a>(
             &mut self,
@@ -51,15 +51,17 @@ fn create_snapshot() {
             eq(snapshot_suffix),
             eq(context.clone()),
         )
-        .returning(|_, _, _, _| Ok(()));
+        .returning(|_, _, _, _| Ok("/test/path".to_string()));
 
     let mut actions = ActionsSystem {
         btrfs: Box::new(mock),
     };
 
-    actions
+    let test_path = actions
         .create_snapshot(subvolume_path, snapshot_path, snapshot_suffix, &context)
         .unwrap();
+
+    assert_eq!(test_path, "/test/path");
 }
 
 #[test]

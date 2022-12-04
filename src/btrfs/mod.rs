@@ -41,6 +41,7 @@ pub trait BtrfsCommands {
     /// * `snapshot_path` - base path at which the snapshot should be created
     /// * `snapshot_suffix` - suffix of the subvolume
     /// * `context` - context in which to execute the command
+    /// * return the path of the created snapshot
     ///
     fn create_snapshot(
         &mut self,
@@ -48,7 +49,7 @@ pub trait BtrfsCommands {
         snapshot_path: &str,
         snapshot_suffix: &str,
         context: &Context,
-    ) -> Result<()>;
+    ) -> Result<String>;
 
     /// Delete a snapshot
     ///
@@ -128,7 +129,7 @@ impl BtrfsCommands for Btrfs {
         snapshot_path: &str,
         snapshot_suffix: &str,
         context: &Context,
-    ) -> Result<()> {
+    ) -> Result<String> {
         let snapshot_path_extension = format!(
             "{}_{}",
             Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true),
@@ -151,7 +152,7 @@ impl BtrfsCommands for Btrfs {
             context,
         )?;
 
-        Ok(())
+        Ok(snapshot_path.to_string())
     }
 
     fn delete_subvolume(&mut self, subvolume: &str, context: &Context) -> Result<()> {
