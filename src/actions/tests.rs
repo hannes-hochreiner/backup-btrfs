@@ -2,7 +2,7 @@ use mockall::{mock, predicate::eq, Sequence};
 use uuid::Uuid;
 
 use super::{Actions, ActionsSystem};
-use crate::btrfs::{BtrfsCommands, Subvolume};
+use crate::btrfs::{BtrfsCommands, Subvolume, SubvolumeInfo};
 use crate::command::Context;
 use crate::custom_duration::CustomDuration;
 use crate::utils::snapshot::SnapshotLocal;
@@ -29,6 +29,7 @@ mock! {
             backup_path: &str,
             context_remote: &Context,
         ) -> Result<()>;
+        fn get_subvolume_info(&mut self, subvolume_path: &str, context: &Context) -> Result<SubvolumeInfo>;
     }
 }
 

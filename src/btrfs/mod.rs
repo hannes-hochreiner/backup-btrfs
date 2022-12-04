@@ -13,6 +13,17 @@ use uuid::Uuid;
 mod tests;
 
 pub trait BtrfsCommands {
+    /// Get subvolume info
+    ///
+    /// * `subvolume_path` - path of the btrfs subvolume
+    /// * `context` - context in which to execute the command
+    ///
+    fn get_subvolume_info(
+        &mut self,
+        subvolume_path: &str,
+        context: &Context,
+    ) -> Result<SubvolumeInfo>;
+
     /// Get subvolumes
     ///
     /// * `subvolume_path` - path of the btrfs subvolume
@@ -20,6 +31,7 @@ pub trait BtrfsCommands {
     ///
     fn get_subvolumes(&mut self, subvolume_path: &str, context: &Context)
         -> Result<Vec<Subvolume>>;
+
     /// Create a snapshot locally
     ///
     /// The new snapshot will be created at the path `<snapshot_path>/<timestamp in rfc3339 format (UTC)>_<suffix>`.
@@ -37,6 +49,7 @@ pub trait BtrfsCommands {
         snapshot_suffix: &str,
         context: &Context,
     ) -> Result<()>;
+
     /// Delete a snapshot
     ///
     /// Executes `btrfs subvolume delete <subvolume_path>`.
@@ -75,6 +88,13 @@ pub struct Subvolume {
     pub uuid: Uuid,
     pub parent_uuid: Option<Uuid>,
     pub received_uuid: Option<Uuid>,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct SubvolumeInfo {
+    pub fs_path: String,
+    pub btrfs_path: String,
+    pub uuid: Uuid,
 }
 
 impl Default for Btrfs {
@@ -184,6 +204,43 @@ impl BtrfsCommands for Btrfs {
                 ),
             ])
             .map(|_| ())
+    }
+
+    fn get_subvolume_info(
+        &mut self,
+        subvolume_path: &str,
+        context: &Context,
+    ) -> Result<SubvolumeInfo> {
+        let output = self.command.run(
+            &format!("sudo btrfs subvolume show \"{}\"", subvolume_path),
+            context,
+        )?;
+        let mut lines = output.lines();
+        let btrfs_path_raw = lines
+            .next()
+            .ok_or(anyhow!("could not find first line"))?
+            .trim();
+        let btrfs_path = match btrfs_path_raw.starts_with("/") {
+            true => btrfs_path_raw.to_string(),
+            false => format!("/{}", btrfs_path_raw),
+        };
+        let uuid = lines
+            .find_map(|l| {
+                match l
+                    .split_once(":")
+                    .map(|(key, value)| (key.trim(), value.trim()))
+                {
+                    Some(("UUID", value)) => Some(Uuid::from_str(value)),
+                    _ => None,
+                }
+            })
+            .ok_or(anyhow!("could not find UUID of subvolume".to_string()))??;
+
+        Ok(SubvolumeInfo {
+            btrfs_path,
+            fs_path: subvolume_path.to_string(),
+            uuid,
+        })
     }
 }
 
