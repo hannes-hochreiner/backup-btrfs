@@ -5,8 +5,8 @@ use std::fs::File;
 
 #[derive(Debug, Deserialize)]
 pub struct Configuration {
-    pub src_subvolume_path: String,
-    pub dst_subvolume_path: String,
+    pub source_subvolume_path: String,
+    pub snapshot_subvolume_path: String,
     pub snapshot_path: String,
     pub snapshot_suffix: String,
     pub user_local: String,

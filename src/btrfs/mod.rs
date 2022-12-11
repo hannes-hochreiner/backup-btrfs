@@ -1,6 +1,6 @@
 use crate::{
     command::{Command, CommandSystem, Context},
-    utils::snapshot::SnapshotLocal,
+    objects::{subvolume::Subvolume, subvolume_info::SubvolumeInfo},
 };
 use anyhow::{anyhow, Error, Result};
 use chrono::{SecondsFormat, Utc};
@@ -9,6 +9,7 @@ use std::{
     str::FromStr,
 };
 use uuid::Uuid;
+
 #[cfg(test)]
 mod tests;
 
@@ -71,8 +72,8 @@ pub trait BtrfsCommands {
     ///
     fn send_snapshot<'a>(
         &mut self,
-        local_snapshot: &SnapshotLocal,
-        common_parent: Option<&'a SnapshotLocal>,
+        local_snapshot: &SubvolumeInfo,
+        common_parent: Option<&'a Subvolume>,
         context_local: &Context,
         backup_path: &str,
         context_remote: &Context,
@@ -81,21 +82,6 @@ pub trait BtrfsCommands {
 
 pub struct Btrfs {
     command: Box<dyn Command>,
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub struct Subvolume {
-    pub path: String,
-    pub uuid: Uuid,
-    pub parent_uuid: Option<Uuid>,
-    pub received_uuid: Option<Uuid>,
-}
-
-#[derive(Debug, PartialEq)]
-pub struct SubvolumeInfo {
-    pub fs_path: String,
-    pub btrfs_path: String,
-    pub uuid: Uuid,
 }
 
 impl Default for Btrfs {
@@ -114,7 +100,7 @@ impl BtrfsCommands for Btrfs {
     ) -> Result<Vec<Subvolume>> {
         let output = self.command.run(
             &format!(
-                "sudo btrfs subvolume list -tupqR --sort=rootid {}",
+                "sudo btrfs subvolume list -tupqRo --sort=rootid {}",
                 subvolume_path
             ),
             context,
@@ -176,27 +162,30 @@ impl BtrfsCommands for Btrfs {
 
     fn send_snapshot(
         &mut self,
-        local_snapshot: &SnapshotLocal,
-        common_parent: Option<&SnapshotLocal>,
+        local_snapshot: &SubvolumeInfo,
+        common_parent: Option<&Subvolume>,
         context_local: &Context,
         backup_path: &str,
         context_remote: &Context,
     ) -> Result<()> {
         log::debug!(
             "sending snapshot: \"{}\" to \"{}\"",
-            local_snapshot.path,
+            local_snapshot.fs_path,
             backup_path
         );
         let mut parent_arg = String::new();
 
         if let Some(parent_snapshot) = common_parent {
-            parent_arg = format!("-p \"{}\"", parent_snapshot.path);
+            parent_arg = format!("-p \"{}\"", parent_snapshot.btrfs_path);
         }
 
         self.command
             .run_piped(&vec![
                 (
-                    &*format!("sudo btrfs send {} \"{}\"", parent_arg, local_snapshot.path),
+                    &*format!(
+                        "sudo btrfs send {} \"{}\"",
+                        parent_arg, local_snapshot.fs_path
+                    ),
                     context_local,
                 ),
                 (
@@ -278,7 +267,10 @@ impl Btrfs {
             }
 
             subvolumes.push(Subvolume {
-                path: format!("/{}", tokens[7]),
+                btrfs_path: match tokens[7].starts_with('/') {
+                    true => tokens[7].into(),
+                    false => format!("/{}", tokens[7]),
+                },
                 uuid: Uuid::from_str(tokens[6])?,
                 parent_uuid: match Uuid::from_str(tokens[4]) {
                     Ok(pu) => Some(pu),

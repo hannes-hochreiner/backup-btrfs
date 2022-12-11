@@ -1,9 +1,7 @@
 use crate::{
     btrfs::{Btrfs, BtrfsCommands, Subvolume, SubvolumeInfo},
     command::{CommandMock, Context},
-    utils::snapshot::SnapshotLocal,
 };
-use chrono::Utc;
 use std::str::FromStr;
 use uuid::Uuid;
 
@@ -34,13 +32,12 @@ fn send_snapshot_no_parent() {
             responses: vec![String::new(), String::new()],
         }),
     };
-    let snapshot_local = SnapshotLocal {
-        path: "/snapshots/to_be_sent".into(),
-        parent_uuid: Uuid::nil(),
-        suffix: "test".into(),
-        timestamp: Utc::now().into(),
+    let snapshot_local = SubvolumeInfo {
+        fs_path: "/snapshots/to_be_sent".into(),
+        btrfs_path: "/btrfs/path".into(),
         uuid: Uuid::nil(),
     };
+
     assert!(btrfs
         .send_snapshot(
             &snapshot_local,
@@ -79,20 +76,18 @@ fn send_snapshot_parent() {
             responses: vec![String::new(), String::new()],
         }),
     };
-    let snapshot_local = SnapshotLocal {
-        path: "/snapshots/to_be_sent".into(),
-        parent_uuid: Uuid::nil(),
-        suffix: "test".into(),
-        timestamp: Utc::now().into(),
+    let snapshot_local = SubvolumeInfo {
+        fs_path: "/snapshots/to_be_sent".into(),
+        btrfs_path: "/btrfs/path".into(),
         uuid: Uuid::nil(),
     };
-    let snapshot_parent = SnapshotLocal {
-        path: "/snapshots/parent".into(),
-        parent_uuid: Uuid::nil(),
-        suffix: "test".into(),
-        timestamp: Utc::now().into(),
+    let snapshot_parent = Subvolume {
+        btrfs_path: "/snapshots/parent".into(),
         uuid: Uuid::nil(),
+        parent_uuid: None,
+        received_uuid: Some(Uuid::nil()),
     };
+
     assert!(btrfs
         .send_snapshot(
             &snapshot_local,
@@ -184,7 +179,7 @@ fn get_local_subvolumes() {
     let mut btrfs = Btrfs {
         command: Box::new(CommandMock {
             commands: vec![(
-                String::from("sudo btrfs subvolume list -tupqR --sort=rootid /"),
+                String::from("sudo btrfs subvolume list -tupqRo --sort=rootid /"),
                 ctx.clone(),
             )],
             responses: vec![String::from(
@@ -205,31 +200,31 @@ fn get_local_subvolumes() {
         vec![
             Subvolume {
                 uuid: Uuid::from_str("11eed410-7829-744e-8288-35c21d278f8e").unwrap(),
-                path: String::from("/home"),
+                btrfs_path: String::from("/home"),
                 parent_uuid: None,
                 received_uuid: None
             },
             Subvolume {
                 uuid: Uuid::from_str("32c672fa-d3ce-0b4e-8eaa-ab9205f377ca").unwrap(),
-                path: String::from("/root"),
+                btrfs_path: String::from("/root"),
                 parent_uuid: None,
                 received_uuid: None
             },
             Subvolume {
                 uuid: Uuid::from_str("5f0b151b-52e4-4445-aa94-d07056733a1f").unwrap(),
-                path: String::from("/opt/btrfs_test"),
+                btrfs_path: String::from("/opt/btrfs_test"),
                 parent_uuid: None,
                 received_uuid: None
             },
             Subvolume {
                 uuid: Uuid::from_str("7f305e3e-851b-974b-a476-e2f206e7a407").unwrap(),
-                path: String::from("/snapshots/2021-05-02T07:40:32Z_inf_btrfs_test"),
+                btrfs_path: String::from("/snapshots/2021-05-02T07:40:32Z_inf_btrfs_test"),
                 parent_uuid: Some(Uuid::from_str("5f0b151b-52e4-4445-aa94-d07056733a1f").unwrap()),
                 received_uuid: None
             },
             Subvolume {
                 uuid: Uuid::from_str("1bd1da76-b61f-db41-a2d2-c3474a31f38f").unwrap(),
-                path: String::from("/snapshots/2021-05-02T13:38:49Z_inf_btrfs_test"),
+                btrfs_path: String::from("/snapshots/2021-05-02T13:38:49Z_inf_btrfs_test"),
                 parent_uuid: Some(Uuid::from_str("5f0b151b-52e4-4445-aa94-d07056733a1f").unwrap()),
                 received_uuid: None
             },
@@ -247,7 +242,7 @@ fn get_remote_subvolumes() {
     let mut btrfs = Btrfs {
         command: Box::new(CommandMock {
             commands: vec![(
-                String::from("sudo btrfs subvolume list -tupqR --sort=rootid /"),
+                String::from("sudo btrfs subvolume list -tupqRo --sort=rootid /"),
                 ctx.clone(),
             )],
             responses: vec![String::from(
@@ -267,19 +262,19 @@ fn get_remote_subvolumes() {
         vec![
             Subvolume {
                 uuid: Uuid::from_str("0b5cc138-af8e-2744-be4f-bdede1b509ef").unwrap(),
-                path: String::from("/root"),
+                btrfs_path: String::from("/root"),
                 parent_uuid: None,
                 received_uuid: None
             },
             Subvolume {
                 uuid: Uuid::from_str("574fef8d-7951-3e45-aa29-7167b9d4590a").unwrap(),
-                path: String::from("/var/lib/portables"),
+                btrfs_path: String::from("/var/lib/portables"),
                 parent_uuid: None,
                 received_uuid: None
             },
             Subvolume {
                 uuid: Uuid::from_str("d1bd727c-8a02-bb44-bdd2-bae468651e98").unwrap(),
-                path: String::from("/backups/2021-05-04T19:48:42Z_inf_btrfs_test"),
+                btrfs_path: String::from("/backups/2021-05-04T19:48:42Z_inf_btrfs_test"),
                 parent_uuid: None,
                 received_uuid: Some(
                     Uuid::from_str("dc4e1039-9241-cd47-9c10-a5d1ce15ba20").unwrap()
@@ -287,7 +282,7 @@ fn get_remote_subvolumes() {
             },
             Subvolume {
                 uuid: Uuid::from_str("54b52286-8265-9444-8603-214e7e0533e0").unwrap(),
-                path: String::from("/backups/2021-05-10T06:14:04Z_inf_btrfs_test"),
+                btrfs_path: String::from("/backups/2021-05-10T06:14:04Z_inf_btrfs_test"),
                 parent_uuid: Some(Uuid::from_str("19391f90-9007-3e4b-b757-6e5d2421b9bd").unwrap()),
                 received_uuid: Some(
                     Uuid::from_str("53bb5cfa-f45e-d147-9407-006271609062").unwrap()
