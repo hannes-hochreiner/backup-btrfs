@@ -1,7 +1,6 @@
 pub mod actions;
-pub mod btrfs;
-pub mod command;
+pub mod backup_error;
+pub mod commands;
 pub mod configuration;
 pub mod custom_duration;
-pub mod custom_error;
 pub mod objects;
