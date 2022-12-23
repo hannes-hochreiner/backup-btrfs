@@ -1,4 +1,4 @@
-# backup-local-rs
+# backup-btrfs
 
 A simple script to coordinate local backups.
 
