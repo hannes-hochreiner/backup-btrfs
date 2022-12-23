@@ -42,7 +42,7 @@ Typically, only a few recent snapshots will be kept on host 1, while host 2 keep
 The program can be installed via cargo from the GitHub repository.
 
 ```bash
-cargo install --git https://github.com/hannes-hochreiner/backup-local-rs
+cargo install --git https://github.com/hannes-hochreiner/backup-btrfs
 ```
 
 For each release, an rpm package is prepared using [OBS](https://build.opensuse.org/package/show/home:h0h4/backup-local-rs).
