@@ -45,8 +45,6 @@ The program can be installed via cargo from the GitHub repository.
 cargo install --git https://github.com/hannes-hochreiner/backup-btrfs
 ```
 
-For each release, an rpm package is prepared using [OBS](https://build.opensuse.org/package/show/home:h0h4/backup-local-rs).
-
 ## License
 
 This work is licensed under the MIT or Apache 2.0 license.
