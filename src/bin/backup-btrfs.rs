@@ -1,8 +1,8 @@
-extern crate backup_local_rs;
+extern crate backup_btrfs;
 
 use anyhow::{Context as _, Result as AnyhowResult};
-use backup_local_rs::actions::{Actions, ActionsSystem};
-use backup_local_rs::configuration::Configuration;
+use backup_btrfs::actions::{Actions, ActionsSystem};
+use backup_btrfs::configuration::Configuration;
 use chrono::Utc;
 use exec_rs::Context;
 use log::{debug, info};
@@ -10,20 +10,6 @@ use std::env;
 
 fn main() -> AnyhowResult<()> {
     env_logger::init();
-
-    let mut com = std::process::Command::new("ssh");
-
-    com.arg("-i")
-        .arg("/home/hannes/.ssh/local_backup_id")
-        .arg("local_backup@charon")
-        .arg("sudo")
-        .args(&[
-            "btrfs",
-            "subvolume",
-            "delete",
-            "/data/backups/snapshots/2022-12-15T18:28:13Z_inf_home",
-        ]);
-    com.spawn().expect("failed");
 
     // read config file
     let config_filename = env::var("BACKUP_LOCAL_RS_CONFIG")
