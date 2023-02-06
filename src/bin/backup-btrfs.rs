@@ -46,6 +46,7 @@ fn main() -> AnyhowResult<()> {
 
     actions.send_snapshot(
         &config.source_subvolume_path,
+        &config.snapshot_device,
         &config.snapshot_subvolume_path,
         &local_mount_information,
         &new_snapshot_info,
@@ -67,6 +68,7 @@ fn main() -> AnyhowResult<()> {
         &config.policy_local,
         &timestamp.into(),
         &config.snapshot_suffix,
+        &config.snapshot_device,
         &local_mount_information,
     )?;
 
@@ -80,6 +82,7 @@ fn main() -> AnyhowResult<()> {
         &config.policy_remote,
         &timestamp.into(),
         &config.snapshot_suffix,
+        &config.backup_device,
         &remote_mount_information,
     )?;
 

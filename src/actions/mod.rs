@@ -34,6 +34,7 @@ pub trait Actions {
     /// Send snapshot
     ///
     /// * `parent_subvolume_path` - path of the parent subvolume of the snapshot to be sent
+    /// * `local_device` - path of the local device
     /// * `local_subvolume_path` - path the subvolume containing the snapshot to be sent
     /// * `local_mount_information` - local mount information
     /// * `snapshot` - snapshot to be sent
@@ -44,6 +45,7 @@ pub trait Actions {
     fn send_snapshot(
         &mut self,
         parent_subvolume_path: &str,
+        local_device: &str,
         local_subvolume_path: &str,
         local_mount_information: &Vec<MountInformation>,
         snapshot: &SubvolumeInfo,
@@ -60,6 +62,7 @@ pub trait Actions {
     /// * `policy` - policy to be applied
     /// * `timestamp` - timestamp to use as the current moment
     /// * `suffix` - suffix of the snapshots (used for filtering)
+    /// * `device` - path of the device
     /// * `mount_information` - mount information (used to translate btrfs paths in to filesystem paths)
     fn police_snapshots(
         &mut self,
@@ -69,6 +72,7 @@ pub trait Actions {
         policy: &Vec<CustomDuration>,
         timestamp: &DateTime<FixedOffset>,
         suffix: &str,
+        device: &str,
         mount_information: &Vec<MountInformation>,
     ) -> Result<(), BackupError>;
 }
@@ -120,11 +124,12 @@ impl<C: Commands> ActionsSystem<C> {
 
     pub fn btrfs_to_fs_path(
         mount_information: &Vec<MountInformation>,
+        device: &str,
         btrfs_path: &str,
     ) -> Result<String, BackupError> {
         let mut mi = mount_information
             .iter()
-            .filter(|mi| mi.fs_type == "btrfs")
+            .filter(|mi| mi.fs_type == "btrfs" && mi.device == device)
             .filter_map(|mi| {
                 Path::new(btrfs_path)
                     .strip_prefix(&mi.root)
@@ -179,6 +184,7 @@ impl<C: Commands> Actions for ActionsSystem<C> {
     fn send_snapshot(
         &mut self,
         parent_subvolume_path: &str,
+        local_device: &str,
         local_subvolume_path: &str,
         local_mount_information: &Vec<MountInformation>,
         snapshot: &SubvolumeInfo,
@@ -217,6 +223,7 @@ impl<C: Commands> Actions for ActionsSystem<C> {
                         btrfs_path: sv.btrfs_path.clone(),
                         fs_path: ActionsSystem::<C>::btrfs_to_fs_path(
                             local_mount_information,
+                            local_device,
                             &sv.btrfs_path,
                         )?,
                         uuid: sv.uuid,
@@ -249,6 +256,7 @@ impl<C: Commands> Actions for ActionsSystem<C> {
         policy: &Vec<CustomDuration>,
         timestamp: &DateTime<FixedOffset>,
         suffix: &str,
+        device: &str,
         mount_information: &Vec<MountInformation>,
     ) -> Result<(), BackupError> {
         // get subvolumes
@@ -285,7 +293,7 @@ impl<C: Commands> Actions for ActionsSystem<C> {
             }
         }) {
             let subvolume_path =
-                ActionsSystem::<C>::btrfs_to_fs_path(mount_information, &sv.btrfs_path)?;
+                ActionsSystem::<C>::btrfs_to_fs_path(mount_information, device, &sv.btrfs_path)?;
             log::info!("deleting subvolume: \"{}\"", subvolume_path);
             self.commander.delete_subvolume(&subvolume_path, context)?;
         }
@@ -396,8 +404,12 @@ mod test {
         ];
 
         assert_eq!(
-            ActionsSystem::<Commander<CommandExec>>::btrfs_to_fs_path(&mi, "/test/some/other/path")
-                .unwrap(),
+            ActionsSystem::<Commander<CommandExec>>::btrfs_to_fs_path(
+                &mi,
+                "device",
+                "/test/some/other/path"
+            )
+            .unwrap(),
             String::from("/mount/point/some/other/path")
         );
     }
@@ -422,9 +434,43 @@ mod test {
         ];
 
         assert_eq!(
-            ActionsSystem::<Commander<CommandExec>>::btrfs_to_fs_path(&mi, "/test/some/other/path")
-                .unwrap(),
+            ActionsSystem::<Commander<CommandExec>>::btrfs_to_fs_path(
+                &mi,
+                "device",
+                "/test/some/other/path"
+            )
+            .unwrap(),
             String::from("/mount/point/2/path")
+        );
+    }
+
+    #[test]
+    fn btrfs_to_fs_path_3() {
+        let mi = vec![
+            MountInformation {
+                device: String::from("/dev/mapper/device_1"),
+                fs_type: String::from("btrfs"),
+                mount_point: String::from("/mount/point"),
+                root: String::from("/"),
+                properties: HashMap::new(),
+            },
+            MountInformation {
+                device: String::from("/dev/mapper/device_2"),
+                fs_type: String::from("btrfs"),
+                mount_point: String::from("/mount/point/2"),
+                root: String::from("/"),
+                properties: HashMap::new(),
+            },
+        ];
+
+        assert_eq!(
+            ActionsSystem::<Commander<CommandExec>>::btrfs_to_fs_path(
+                &mi,
+                "/dev/mapper/device_1",
+                "/test/some/other/path"
+            )
+            .unwrap(),
+            String::from("/mount/point/test/some/other/path")
         );
     }
 
@@ -609,6 +655,7 @@ mod test {
         actions
             .send_snapshot(
                 &parent_subvolume.fs_path.clone(),
+                "/dev/some/device",
                 local_subvolume_path,
                 &local_mount_information,
                 snapshot,
@@ -745,6 +792,7 @@ mod test {
         actions
             .send_snapshot(
                 &parent_subvolume.fs_path.clone(),
+                "/dev/some/device",
                 local_subvolume_path,
                 &local_mount_information,
                 snapshot,
@@ -814,6 +862,7 @@ mod test {
                 &policy,
                 &timestamp.into(),
                 suffix,
+                "/dev/some/device",
                 &mount_information,
             )
             .unwrap();
