@@ -12,8 +12,8 @@ fn main() -> AnyhowResult<()> {
     env_logger::init();
 
     // read config file
-    let config_filename = env::var("BACKUP_LOCAL_RS_CONFIG")
-        .context("could not find environment variable BACKUP_LOCAL_RS_CONFIG")?;
+    let config_filename = env::var("BACKUP_BTRFS_CONFIG")
+        .context("could not find environment variable BACKUP_BTRFS_CONFIG")?;
     let config = Configuration::read_from_file(&config_filename)?;
 
     debug!("configuration read from file \"{}\"", config_filename);

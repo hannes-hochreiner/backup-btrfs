@@ -66,7 +66,7 @@
                 in {
                   Type = "oneshot";
                   ExecStart = "${pkg}/bin/backup-btrfs";
-                  Environment = "RUST_LOG=${log_level} BACKUP_LOCAL_RS_CONFIG=${config_file}";
+                  Environment = "RUST_LOG=${log_level} BACKUP_BTRFS_CONFIG='${config_file}'";
                 };
               };
               systemd.timers."hochreiner.backup-btrfs" = {
