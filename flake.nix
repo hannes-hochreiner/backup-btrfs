@@ -43,39 +43,42 @@
           with lib;
           let cfg = config.hochreiner.services.backup-btrfs;
           in {
-            # options.hochreiner.services.rusthello = {
-            #   enable = mkEnableOption "Enables the rust hello service";
-            # };
+            options.hochreiner.services.backup-btrfs = {
+              enable = mkEnableOption "Enables the backup-btrfs service";
+              config_file = mkOption {
+                type = types.path;
+                default = "";
+                description = lib.mdDoc "Path of the configuration file";
+              };
+              log_level = mkOption {
+                type = types.enum [ "error" "warn" "info" "debug" "trace" ];
+                default = "info";
+                description = lib.mdDoc "Log level";
+              };
+            };
 
-            # config = mkIf cfg.enable {
-            #   systemd.services."hochreiner.rusthello" = {
-            #     description = "rust hello test service";
-            #     wantedBy = [ "multi-user.target" ];
+            config = mkIf cfg.enable {
+              systemd.services."hochreiner.backup-btrfs" = {
+                description = "backup-btrfs service";
+                wantedBy = [ "multi-user.target" ];
 
-            #     serviceConfig = let pkg = self.packages.${system}.default;
-            #     in {
-            #       # Restart = "on-failure";
-            #       Type = "oneshot";
-            #       ExecStart = "${pkg}/bin/rust-flake-test";
-            #       DynamicUser = "yes";
-            #       RuntimeDirectory = "hochreiner.rusthello";
-            #       RuntimeDirectoryMode = "0755";
-            #       StateDirectory = "hochreiner.rusthello";
-            #       StateDirectoryMode = "0700";
-            #       CacheDirectory = "hochreiner.rusthello";
-            #       CacheDirectoryMode = "0750";
-            #     };
-            #   };
-            #   systemd.timers."hochreiner.rusthello" = {
-            #     description = "timer for the rust hello test service";
-            #     wantedBy = [ "multi-user.target" ];
-            #     timerConfig = {
-            #       OnBootSec="5min";
-            #       OnUnitInactiveSec="5min";
-            #       Unit="hochreiner.rusthello.service";
-            #     };
-            #   };
-            # };
+                serviceConfig = let pkg = self.packages.${system}.default;
+                in {
+                  Type = "oneshot";
+                  ExecStart = "${pkg}/bin/backup-btrfs";
+                  Environment = "RUST_LOG=${log_level} BACKUP_LOCAL_RS_CONFIG=${config_file}";
+                };
+              };
+              systemd.timers."hochreiner.backup-btrfs" = {
+                description = "timer for the backup-btrfs service";
+                wantedBy = [ "multi-user.target" ];
+                timerConfig = {
+                  OnBootSec="5min";
+                  OnUnitInactiveSec="5min";
+                  Unit="hochreiner.backup-btrfs.service";
+                };
+              };
+            };
           };
 
         devShells.default = pkgs.mkShell {
