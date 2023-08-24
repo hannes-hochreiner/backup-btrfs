@@ -16,8 +16,10 @@ uuid = "1.2"
 log = "0"
 env_logger = "0"
 exec-rs = { git = "https://github.com/hannes-hochreiner/exec-rs", tag = "v1.0.0" }
-policer = { git = "https://github.com/hannes-hochreiner/policer", tag = "v0.2.0" }
+policer = { git = "https://github.com/hannes-hochreiner/policer", tag = "v0.3.3" }
 
 [dev-dependencies]
-exec-rs = { git = "https://github.com/hannes-hochreiner/exec-rs", tag = "v1.0.0", features = ["mockall"] }
+exec-rs = { git = "https://github.com/hannes-hochreiner/exec-rs", tag = "v1.0.0", features = [
+  "mockall",
+] }
 mockall = "0"
