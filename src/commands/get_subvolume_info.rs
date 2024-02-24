@@ -71,9 +71,7 @@ mod test {
     #[test]
     fn get_subvolume_info_1() {
         let ctx = Context::Remote {
-            host: "host".into(),
-            user: "user".into(),
-            identity: "/home/test/.ssh".into(),
+            config: Some("/home/test/.ssh".into()),
         };
 
         let mut mock = MockExec::new();
@@ -123,9 +121,7 @@ mod test {
     #[test]
     fn get_subvolume_info_2() {
         let ctx = Context::Remote {
-            host: "host".into(),
-            user: "user".into(),
-            identity: "/home/test/.ssh".into(),
+            config: Some("/home/test/.ssh".into()),
         };
 
         let mut mock = MockExec::new();

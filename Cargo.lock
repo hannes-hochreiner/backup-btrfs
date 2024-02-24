@@ -252,8 +252,8 @@ dependencies = [
 
 [[package]]
 name = "exec-rs"
-version = "1.0.0"
-source = "git+https://github.com/hannes-hochreiner/exec-rs?tag=v1.0.0#f6b28a3a5298f6b63f008656c040ed9f0d6d5e6b"
+version = "2.0.0"
+source = "git+https://github.com/hannes-hochreiner/exec-rs?tag=v2.0.0#30ecaf5eefc08f9996165eebf5c6b0ba4b33589e"
 dependencies = [
  "mockall",
  "thiserror",

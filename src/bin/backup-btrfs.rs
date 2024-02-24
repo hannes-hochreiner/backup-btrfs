@@ -26,9 +26,7 @@ fn main() -> AnyhowResult<()> {
     };
     // create remote context
     let context_remote = Context::Remote {
-        user: config.config_ssh.remote_user,
-        host: config.config_ssh.remote_host.clone(),
-        identity: config.config_ssh.identity_file_path,
+        config: config.config_ssh,
     };
 
     // create a new local snapshot

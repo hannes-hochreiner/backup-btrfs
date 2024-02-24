@@ -84,9 +84,7 @@ mod test {
     #[test]
     fn snapshot_subvolume() {
         let context = Context::Remote {
-            host: "host".into(),
-            user: "user".into(),
-            identity: "/home/test/.ssh".into(),
+            config: Some("/home/test/.ssh".into()),
         };
 
         let timestamp = DateTime::parse_from_rfc3339("2022-11-02T12:13:14Z").unwrap();

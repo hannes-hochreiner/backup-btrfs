@@ -68,9 +68,7 @@ mod test {
             user: "test".into(),
         };
         let context_remote = Context::Remote {
-            user: "test2".into(),
-            host: "host1".into(),
-            identity: "/tmp/ident".into(),
+            config: Some("/tmp/ident".into()),
         };
         let snapshot_local = SubvolumeInfo {
             fs_path: "/snapshots/to_be_sent".into(),
@@ -117,9 +115,7 @@ mod test {
             user: "test".into(),
         };
         let context_remote = Context::Remote {
-            user: "test2".into(),
-            host: "host1".into(),
-            identity: "/tmp/ident".into(),
+            config: Some("/tmp/ident".into()),
         };
         let snapshot_local = SubvolumeInfo {
             fs_path: "/snapshots/to_be_sent".into(),

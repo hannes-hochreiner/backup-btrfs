@@ -542,9 +542,7 @@ mod test {
             user: "test_user".into(),
         };
         let context_remote = Context::Remote {
-            user: "remote_user".into(),
-            host: "remote_host".into(),
-            identity: "remote_identity".into(),
+            config: Some("config".into()),
         };
         let parent_uuid = Uuid::parse_str("5f0b151b-52e4-4445-aa94-d07056733a1f").unwrap();
         let snapshot_uuid = Uuid::parse_str("5f0b151b-52e4-4445-aa94-d07056733a1e").unwrap();
@@ -605,11 +603,7 @@ mod test {
             .returning(move |f_subvolume_path, f_context| {
                 assert_eq!(f_subvolume_path, backup_subvolume_path);
                 assert!(match f_context {
-                    Context::Remote {
-                        host: _,
-                        identity: _,
-                        user: _,
-                    } => true,
+                    Context::Remote { config: _ } => true,
                     _ => false,
                 });
 
@@ -638,11 +632,7 @@ mod test {
                         _ => false,
                     });
                     assert!(match f_context_remote {
-                        Context::Remote {
-                            host: _,
-                            identity: _,
-                            user: _,
-                        } => true,
+                        Context::Remote { config: _ } => true,
                         _ => false,
                     });
 
@@ -681,9 +671,7 @@ mod test {
             user: "test_user".into(),
         };
         let context_remote = Context::Remote {
-            user: "remote_user".into(),
-            host: "remote_host".into(),
-            identity: "remote_identity".into(),
+            config: Some("remote_config".into()),
         };
         let parent_uuid = Uuid::parse_str("5f0b151b-52e4-4445-aa94-d07056733a1f").unwrap();
         let snapshot_uuid = Uuid::parse_str("5f0b151b-52e4-4445-aa94-d07056733a1e").unwrap();
@@ -743,11 +731,7 @@ mod test {
             .returning(move |f_subvolume_path, f_context| {
                 assert_eq!(f_subvolume_path, backup_subvolume_path);
                 assert!(match f_context {
-                    Context::Remote {
-                        host: _,
-                        identity: _,
-                        user: _,
-                    } => true,
+                    Context::Remote { config: _ } => true,
                     _ => false,
                 });
 
@@ -776,11 +760,7 @@ mod test {
                         _ => false,
                     });
                     assert!(match f_context_remote {
-                        Context::Remote {
-                            host: _,
-                            identity: _,
-                            user: _,
-                        } => true,
+                        Context::Remote { config: _ } => true,
                         _ => false,
                     });
                     Ok(())
