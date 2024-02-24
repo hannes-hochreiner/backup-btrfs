@@ -73,8 +73,8 @@
                 description = "timer for the backup-btrfs service";
                 wantedBy = [ "multi-user.target" ];
                 timerConfig = {
-                  OnBootSec="5min";
-                  OnUnitInactiveSec="5min";
+                  OnBootSec="15min";
+                  OnUnitInactiveSec="15min";
                   Unit="hochreiner.backup-btrfs.service";
                 };
               };
