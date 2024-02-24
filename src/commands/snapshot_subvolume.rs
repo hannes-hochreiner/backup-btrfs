@@ -84,6 +84,7 @@ mod test {
     #[test]
     fn snapshot_subvolume() {
         let context = Context::Remote {
+            host: "host".into(),
             config: Some("/home/test/.ssh".into()),
         };
 

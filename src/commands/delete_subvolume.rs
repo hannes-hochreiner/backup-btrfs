@@ -28,7 +28,7 @@ impl<T: Exec> CommandDeleteSubvolume for super::Commander<T> {
                         )))?;
                 subvolume.to_owned()
             }
-            Context::Remote { config: _ } => subvolume.to_owned(),
+            Context::Remote { host: _, config: _ } => subvolume.to_owned(),
         };
 
         if vec!["home", "/home", "root", "/"].contains(&subvolume.as_str()) {

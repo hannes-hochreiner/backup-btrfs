@@ -12,11 +12,17 @@ pub struct Configuration {
     pub snapshot_suffix: String,
     pub user_local: String,
     pub policy_local: Vec<CustomDuration>,
-    pub config_ssh: Option<String>,
+    pub config_ssh: ConfigurationSsh,
     pub backup_device: String,
     pub backup_subvolume_path: String,
     pub backup_path: String,
     pub policy_remote: Vec<CustomDuration>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ConfigurationSsh {
+    pub host: String,
+    pub config: Option<String>,
 }
 
 impl Configuration {

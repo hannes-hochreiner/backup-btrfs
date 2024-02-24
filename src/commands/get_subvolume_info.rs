@@ -71,6 +71,7 @@ mod test {
     #[test]
     fn get_subvolume_info_1() {
         let ctx = Context::Remote {
+            host: "host".into(),
             config: Some("/home/test/.ssh".into()),
         };
 
@@ -121,6 +122,7 @@ mod test {
     #[test]
     fn get_subvolume_info_2() {
         let ctx = Context::Remote {
+            host: "host".into(),
             config: Some("/home/test/.ssh".into()),
         };
 

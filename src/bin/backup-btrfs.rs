@@ -26,7 +26,8 @@ fn main() -> AnyhowResult<()> {
     };
     // create remote context
     let context_remote = Context::Remote {
-        config: config.config_ssh,
+        host: config.config_ssh.host,
+        config: config.config_ssh.config,
     };
 
     // create a new local snapshot

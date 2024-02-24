@@ -167,6 +167,7 @@ mod test {
     #[test]
     fn get_remote_subvolumes() {
         let ctx = Context::Remote {
+            host: "host".into(),
             config: Some("/home/test/.ssh".into()),
         };
         let mut mock = MockExec::new();
