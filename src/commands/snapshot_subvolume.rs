@@ -1,6 +1,7 @@
 use crate::backup_error::BackupError;
 use chrono::{DateTime, SecondsFormat, Utc};
 use exec_rs::{Context, Exec};
+use log::debug;
 use std::path::PathBuf;
 
 pub trait CommandSnapshotSubvolume {
@@ -53,6 +54,8 @@ impl<T: Exec> CommandSnapshotSubvolume for super::Commander<T> {
                     "could not construct snapshot_path",
                 )))?;
 
+        debug!("creating snapshot of \"{subvolume_path}\" in location \"{snapshot_path}\"");
+
         self.exec.exec(
             "sudo",
             &[
@@ -65,6 +68,8 @@ impl<T: Exec> CommandSnapshotSubvolume for super::Commander<T> {
             ],
             Some(context),
         )?;
+
+        debug!("created snapshot successfully");
 
         Ok(snapshot_path.to_string())
     }
