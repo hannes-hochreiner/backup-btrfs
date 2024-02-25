@@ -144,9 +144,13 @@ impl<C: Commands> ActionsSystem<C> {
 
         mi.sort_by_key(|s| s.0);
 
-        mi.last()
-            .map(|e| e.1.clone())
-            .ok_or(BackupError::PathConversionError.into())
+        mi.last().map(|e| e.1.clone()).ok_or(
+            BackupError::PathConversionError {
+                btrfs_path: btrfs_path.into(),
+                filesystem_path: device.into(),
+            }
+            .into(),
+        )
     }
 
     pub fn eq_or_received(sv: &Subvolume, svi: &SubvolumeInfo) -> bool {

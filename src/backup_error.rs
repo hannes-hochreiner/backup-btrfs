@@ -22,8 +22,13 @@ pub enum BackupError {
     IoError(#[from] std::io::Error),
     #[error("error parsing duration")]
     DurationConversionError,
-    #[error("error converting btrfs path into filesystem path")]
-    PathConversionError,
+    #[error(
+        "error converting btrfs path \"{btrfs_path}\" into filesystem path \"{filesystem_path}\""
+    )]
+    PathConversionError {
+        btrfs_path: String,
+        filesystem_path: String,
+    },
     #[error("error creating snapshot: {0}")]
     SnapshotCreation(String),
 }
