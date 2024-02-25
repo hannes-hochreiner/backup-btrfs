@@ -63,8 +63,6 @@
             config = mkIf cfg.enable {
               systemd.services."hochreiner.backup-btrfs" = {
                 description = "backup-btrfs service";
-                wantedBy = [ "multi-user.target" ];
-                enable = false; # the service will be triggered by the timer
                 serviceConfig = let pkg = self.packages.${system}.default;
                 in {
                   Type = "oneshot";
