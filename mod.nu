@@ -8,11 +8,13 @@ export def test [] {
 }
 
 export def nix-build [] {
-	run-external "podman" "run" "--rm" "-it" "-v" $"($env.PWD):/workspace:z" "nixos/nix" "bash" "-c" "nix build --extra-experimental-features nix-command --extra-experimental-features flakes --recreate-lock-file /workspace"
+	# run-external "podman" "run" "--rm" "-it" "-v" $"($env.PWD):/workspace:z" "nixos/nix" "bash" "-c" "nix build --extra-experimental-features nix-command --extra-experimental-features flakes --recreate-lock-file /workspace"
+	nix build
 }
 
 export def nix-update [] {
-	run-external "podman" "run" "--rm" "-it" "-v" $"($env.PWD):/workspace:z" "nixos/nix" "bash" "-c" "nix flake update --extra-experimental-features nix-command --extra-experimental-features flakes /workspace"
+	# run-external "podman" "run" "--rm" "-it" "-v" $"($env.PWD):/workspace:z" "nixos/nix" "bash" "-c" "nix flake update --extra-experimental-features nix-command --extra-experimental-features flakes /workspace"
+	nix flake update
 }
 
 export def start [] {
