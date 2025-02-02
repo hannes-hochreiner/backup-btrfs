@@ -3,6 +3,7 @@ mod get_subvolumes;
 use exec_rs::{CommandExec, Exec};
 mod delete_subvolume;
 mod get_subvolume_info;
+mod read_link;
 mod send_snapshot;
 mod snapshot_subvolume;
 
@@ -13,6 +14,7 @@ pub trait Commands:
     + get_subvolume_info::CommandGetSubvolumeInfo
     + delete_subvolume::CommandDeleteSubvolume
     + send_snapshot::CommandSendSnapshot
+    + read_link::CommandReadLink
 {
 }
 
@@ -61,6 +63,9 @@ mockall::mock! {
             backup_path: &str,
             context_remote: &exec_rs::Context,
         ) -> Result<(), crate::backup_error::BackupError>;
+    }
+    impl read_link::CommandReadLink for Commander {
+        fn read_link(&mut self, path: &str, context: &exec_rs::Context) -> Result<Vec<String>, crate::backup_error::BackupError>;
     }
     impl Commands for Commander {}
 }

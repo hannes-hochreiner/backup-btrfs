@@ -40,12 +40,16 @@ fn main() -> AnyhowResult<()> {
 
     info!("created new snapshot: \"{}\"", new_snapshot_info.fs_path);
 
+    // get device information
+    let snapshot_devices = actions.read_link(&config.snapshot_device, &context_local)?;
+    let backup_devices = actions.read_link(&config.backup_device, &context_remote)?;
+
     let local_mount_information = actions.get_mount_information(&context_local)?;
     let remote_mount_information = actions.get_mount_information(&context_remote)?;
 
     actions.send_snapshot(
         &config.source_subvolume_path,
-        &config.snapshot_device,
+        &snapshot_devices,
         &config.snapshot_subvolume_path,
         &local_mount_information,
         &new_snapshot_info,
@@ -67,7 +71,7 @@ fn main() -> AnyhowResult<()> {
         &config.policy_local,
         &timestamp.into(),
         &config.snapshot_suffix,
-        &config.snapshot_device,
+        &snapshot_devices,
         &local_mount_information,
     )?;
 
@@ -81,7 +85,7 @@ fn main() -> AnyhowResult<()> {
         &config.policy_remote,
         &timestamp.into(),
         &config.snapshot_suffix,
-        &config.backup_device,
+        &backup_devices,
         &remote_mount_information,
     )?;
 
