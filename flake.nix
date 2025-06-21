@@ -2,218 +2,220 @@
   description = "A backup tool based on btrfs snapshots";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-23.11";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.05";
 
-    crane = {
-      url = "github:ipetkov/crane";
+    rust-overlay = {
+      url = "github:oxalica/rust-overlay";
       inputs.nixpkgs.follows = "nixpkgs";
-    };
-
-    flake-utils= {
-      url = "github:numtide/flake-utils";
     };
   };
 
-  outputs = { self, nixpkgs, crane, flake-utils, ... }:
-    flake-utils.lib.eachDefaultSystem (system:
-      let
-        pkgs = import nixpkgs {
+  outputs = { self, nixpkgs, rust-overlay, ... }:
+    let
+      system = "x86_64-linux";
+
+      pkgs = import nixpkgs {
+        inherit system;
+        overlays = [ (import rust-overlay) ];
+      };
+
+      rust-bin-custom = pkgs.rust-bin.stable.latest.default.override {
+        extensions = [ "rust-src" "rust-analyzer" ];
+        targets = [ "x86_64-unknown-linux-gnu" ];
+      };
+
+      backup-btrfs-cargo-toml = (builtins.fromTOML (builtins.readFile ./Cargo.toml));
+      hashes-toml = (builtins.fromTOML (builtins.readFile ./hashes.toml));
+
+      backup-btrfs-deps = derivation {
+        inherit system;
+        name = "${backup-btrfs-cargo-toml.package.name}-${hashes-toml.cargo_lock}-deps";
+        builder = "${pkgs.nushell}/bin/nu";
+        buildInputs = with pkgs; [
+          rust-bin-custom
+        ];
+        args = [ ./builder.nu "vendor" ./. ];
+
+        outputHashAlgo = "sha256";
+        outputHashMode = "recursive";
+        outputHash = hashes-toml.deps;
+        # outputHash = pkgs.lib.fakeHash;
+      };
+
+      backup-btrfs-bin = derivation {
           inherit system;
-        };
-
-        craneLib = crane.lib.${system};
-        backup-btrfs = craneLib.buildPackage {
-          src = craneLib.cleanCargoSource ./.;
-
-          buildInputs = [
-            # Add additional build inputs here
+          name = "${backup-btrfs-cargo-toml.package.name}-v${backup-btrfs-cargo-toml.package.version}";
+          builder = "${pkgs.nushell}/bin/nu";
+          buildInputs = with pkgs; [
+            gcc_multi
+            rust-bin-custom
           ];
-        };
-      in
-      {
-        checks = {
-          inherit backup-btrfs;
-        };
+          args = [ ./builder.nu "build" ./. backup-btrfs-deps "backup-btrfs" hashes-toml.cargo_config ];
+      };
+    in {
+      packages.${system} = {
+        deps = backup-btrfs-deps;
+        bin = backup-btrfs-bin;
+        default = backup-btrfs-bin;
+      };
 
-        packages.default = backup-btrfs;
-
-        apps.default = flake-utils.lib.mkApp {
-          drv = backup-btrfs;
-        };
-
-        nixosModules.default = { config, lib, pkgs, ... }:
-          with lib;
-          let
-            cfg = config.hochreiner.services.backup-btrfs;
-            policyOptions = {
-              options = {
-                value = mkOption {
-                  type = types.int;
-                };
-                unit = mkOption {
-                  type = types.enum [ "minutes" "hours" "days" "weeks" ];
-                };
+      nixosModules.${system}.default = { config, lib, pkgs, ... }:
+        with lib;
+        let
+          cfg = config.hochreiner.services.backup-btrfs;
+    
+          policyOptions = {
+            options = {
+              value = mkOption {
+                type = types.int;
+              };
+              unit = mkOption {
+                type = types.enum [ "minutes" "hours" "days" "weeks" ];
               };
             };
-            configuration = pkgs.writeTextFile {
-              name = "backup-btrfs-config";
-              text = ''
-                {
-                  "source_subvolume_path": "${cfg.source_subvolume_path}",
-                  "snapshot_device": "${cfg.snapshot_device}",
-                  "snapshot_subvolume_path": "${cfg.snapshot_subvolume_path}",
-                  "snapshot_path": "${cfg.snapshot_path}",
-                  "snapshot_suffix": "${cfg.snapshot_suffix}",
-                  "user_local": "${cfg.user_local}",
-                  "policy_local": ['' + (lib.strings.concatStringsSep ", " (lib.map (elem: "{ \"${elem.unit}\": ${builtins.toString elem.value} }") cfg.policy_local)) + ''],
-                  "config_ssh": {
-                    "host": "${cfg.ssh_host}",
-                    "config": "${cfg.ssh_config}"
-                  },
-                  "backup_device": "${cfg.backup_device}",
-                  "backup_subvolume_path": "${cfg.backup_subvolume_path}",
-                  "backup_path": "${cfg.backup_path}",
-                  "policy_remote": ['' + (lib.strings.concatStringsSep ", " (lib.map (elem: "{ \"${elem.unit}\": ${builtins.toString elem.value} }") cfg.policy_remote)) + '']
-                }
-              '';
-            };
-          in {
-            # https://britter.dev/blog/2025/01/09/nixos-modules/
-            options.hochreiner.services.backup-btrfs = {
-              enable = mkEnableOption "Enables the backup-btrfs service";
-
-              config_file = mkOption {
-                type = types.path;
-                description = lib.mdDoc "Path of the configuration file";
-              };
-              
-              log_level = mkOption {
-                type = types.enum [ "error" "warn" "info" "debug" "trace" ];
-                default = "info";
-                description = lib.mdDoc "Log level";
-              };
-
-              source_subvolume_path = mkOption {
-                type = types.path;
-                description = lib.mdDoc "path of the subvolume to back up";
-                example = "/home";
-              };
-
-              snapshot_device = mkOption {
-                type = types.path;
-                description = lib.mdDoc "path of the device the subvolume resides on";
-                example = "/dev/mapper/new";
-              };
-
-              snapshot_subvolume_path = mkOption {
-                type = types.path;
-                description = lib.mdDoc "path of the subvolume for snapshots";
-                example = "/snapshots";
-              };
-
-              snapshot_path = mkOption {
-                type = types.path;
-                description = lib.mdDoc "path of the snapshots";
-                example = "/snapshots";
-              };
-
-              snapshot_suffix = mkOption {
-                type = types.str;
-                description = lib.mdDoc "snapshot suffix";
-                example = "laptop";
-              };
-
-              user_local = mkOption {
-                type = types.str;
-                description = lib.mdDoc "local user running the backup";
-                example = "root";
-              };
-
-              policy_local = mkOption {
-                description = lib.mdDoc "policy for retaining local snapshots";
-                type = types.listOf (types.submodule policyOptions);
-              };
-
-              ssh_host = mkOption {
-                type = types.str;
-                description = lib.mdDoc "name of the remote host";
-              };
-
-              ssh_config = mkOption {
-                type = types.path;
-                description = lib.mdDoc "path of the ssh configuration file";
-              };
-
-              backup_device = mkOption {
-                type = types.path;
-                description = lib.mdDoc "device path on the remote host";
-                example = "/dev/mapper/volume";
-              };
-
-              backup_subvolume_path = mkOption {
-                type = types.path;
-                description = lib.mdDoc "subvolume path on the remote host";
-                example = "/volume/backups";
-              };
-
-              backup_path = mkOption {
-                type = types.path;
-                description = lib.mdDoc "path of the snapshots on the remote host";
-                example = "/volume/backups/snapshots";
-              };
-
-              policy_remote = mkOption {
-                description = lib.mdDoc "policy for retaining remote snapshots";
-                type = types.listOf (types.submodule policyOptions);
-              };
-            };
-
-            config = mkIf cfg.enable {
-              systemd.services."hochreiner.backup-btrfs" = {
-                description = "backup-btrfs service";
-                serviceConfig = let pkg = self.packages.${system}.default;
-                in {
-                  Type = "oneshot";
-                  ExecStart = "${pkg}/bin/backup-btrfs";
-                  Environment = "RUST_LOG='${cfg.log_level}' BACKUP_BTRFS_CONFIG='${configuration}' PATH=/run/current-system/sw/bin";
-                };
-              };
-              systemd.timers."hochreiner.backup-btrfs" = {
-                description = "timer for the backup-btrfs service";
-                wantedBy = [ "multi-user.target" ];
-                timerConfig = {
-                  OnBootSec="15min";
-                  OnUnitInactiveSec="15min";
-                  Unit="hochreiner.backup-btrfs.service";
-                };
-              };
-              # environment.etc."test-config".text = ''
-              #   {
-              #     "device" = "${cfg.device}"
-              #   }
-              # '';
-            };
-            # configuration = pkgs.writeTextFile {
-            #   name = "test-config";
-            #   text = ''
-            #     {
-            #       "device" = "${cfg.device}"
-            #     }
-            #   '';
-            # };
           };
 
-        devShells.default = pkgs.mkShell {
-          inputsFrom = builtins.attrValues self.checks;
+          configuration = pkgs.writeTextFile {
+            name = "backup-btrfs-config";
+            text = ''
+              {
+                "source_subvolume_path": "${cfg.source_subvolume_path}",
+                "snapshot_device": "${cfg.snapshot_device}",
+                "snapshot_subvolume_path": "${cfg.snapshot_subvolume_path}",
+                "snapshot_path": "${cfg.snapshot_path}",
+                "snapshot_suffix": "${cfg.snapshot_suffix}",
+                "user_local": "${cfg.user_local}",
+                "policy_local": ['' + (lib.strings.concatStringsSep ", " (lib.map (elem: "{ \"${elem.unit}\": ${builtins.toString elem.value} }") cfg.policy_local)) + ''],
+                "config_ssh": {
+                  "host": "${cfg.ssh_host}",
+                  "config": "${cfg.ssh_config}"
+                },
+                "backup_device": "${cfg.backup_device}",
+                "backup_subvolume_path": "${cfg.backup_subvolume_path}",
+                "backup_path": "${cfg.backup_path}",
+                "policy_remote": ['' + (lib.strings.concatStringsSep ", " (lib.map (elem: "{ \"${elem.unit}\": ${builtins.toString elem.value} }") cfg.policy_remote)) + '']
+              }
+            '';
+          };
+        in {
+          # https://britter.dev/blog/2025/01/09/nixos-modules/
+          options.hochreiner.services.backup-btrfs = {
+            enable = mkEnableOption "Enables the backup-btrfs service";
+            config_file = mkOption {
+              type = types.path;
+              description = lib.mdDoc "Path of the configuration file";
+            };
 
-          # Extra inputs can be added here
-          nativeBuildInputs = with pkgs; [
-            cargo
-            rustc
-          ];
+            log_level = mkOption {
+              type = types.enum [ "error" "warn" "info" "debug" "trace" ];
+              default = "info";
+              description = lib.mdDoc "Log level";
+            };
+            source_subvolume_path = mkOption {
+              type = types.path;
+              description = lib.mdDoc "path of the subvolume to back up";
+              example = "/home";
+            };
+            snapshot_device = mkOption {
+              type = types.path;
+              description = lib.mdDoc "path of the device the subvolume resides on";
+              example = "/dev/mapper/new";
+            };
+            snapshot_subvolume_path = mkOption {
+              type = types.path;
+              description = lib.mdDoc "path of the subvolume for snapshots";
+              example = "/snapshots";
+            };
+            snapshot_path = mkOption {
+              type = types.path;
+              description = lib.mdDoc "path of the snapshots";
+              example = "/snapshots";
+            };
+            snapshot_suffix = mkOption {
+              type = types.str;
+              description = lib.mdDoc "snapshot suffix";
+              example = "laptop";
+            };
+            user_local = mkOption {
+              type = types.str;
+              description = lib.mdDoc "local user running the backup";
+              example = "root";
+            };
+            policy_local = mkOption {
+              description = lib.mdDoc "policy for retaining local snapshots";
+              type = types.listOf (types.submodule policyOptions);
+            };
+            ssh_host = mkOption {
+              type = types.str;
+              description = lib.mdDoc "name of the remote host";
+            };
+            ssh_config = mkOption {
+              type = types.path;
+              description = lib.mdDoc "path of the ssh configuration file";
+            };
+            backup_device = mkOption {
+              type = types.path;
+              description = lib.mdDoc "device path on the remote host";
+              example = "/dev/mapper/volume";
+            };
+            backup_subvolume_path = mkOption {
+              type = types.path;
+              description = lib.mdDoc "subvolume path on the remote host";
+              example = "/volume/backups";
+            };
+            backup_path = mkOption {
+              type = types.path;
+              description = lib.mdDoc "path of the snapshots on the remote host";
+              example = "/volume/backups/snapshots";
+            };
+            policy_remote = mkOption {
+              description = lib.mdDoc "policy for retaining remote snapshots";
+              type = types.listOf (types.submodule policyOptions);
+            };
+          };
+
+          config = mkIf cfg.enable {
+            systemd.services."hochreiner.backup-btrfs" = {
+              description = "backup-btrfs service";
+              serviceConfig = let pkg = self.packages.${system}.default;
+              in {
+                Type = "oneshot";
+                ExecStart = "${pkg}/bin/backup-btrfs";
+                Environment = "RUST_LOG='${cfg.log_level}' BACKUP_BTRFS_CONFIG='${configuration}' PATH=/run/current-system/sw/bin";
+              };
+            };
+            systemd.timers."hochreiner.backup-btrfs" = {
+              description = "timer for the backup-btrfs service";
+              wantedBy = [ "multi-user.target" ];
+              timerConfig = {
+                OnBootSec="15min";
+                OnUnitInactiveSec="15min";
+                Unit="hochreiner.backup-btrfs.service";
+              };
+            };
+          };
         };
-      }
-    );
+
+      devShells.${system}.default = pkgs.mkShell {
+        name = "backup-btrfs";
+
+        # Inherit inputs from checks.
+        # checks = self.checks.${system}
+        # shellHook = ''
+        #   exec zellij -l zellij.kdl
+        # '';
+        shellHook = ''
+          exec nu
+        '';
+        # Additional dev-shell environment variables can be set directly
+        # MY_CUSTOM_DEVELOPMENT_VAR = "something else"
+        # Extra inputs can be added here; cargo and rustc are provided by default.
+        buildInputs = with pkgs; [
+          # zellij
+          rust-bin-custom
+        ];
+      };
+    };
   
   nixConfig = {
     substituters = [

@@ -8,13 +8,33 @@ export def test [] {
 }
 
 export def nix-build [] {
-	# run-external "podman" "run" "--rm" "-it" "-v" $"($env.PWD):/workspace:z" "nixos/nix" "bash" "-c" "nix build --extra-experimental-features nix-command --extra-experimental-features flakes --recreate-lock-file /workspace"
-	nix build
+  ^nix build
 }
 
-export def nix-update [] {
-	# run-external "podman" "run" "--rm" "-it" "-v" $"($env.PWD):/workspace:z" "nixos/nix" "bash" "-c" "nix flake update --extra-experimental-features nix-command --extra-experimental-features flakes /workspace"
-	nix flake update
+export def update [] {
+	let deps_info = (get-deps-info)
+
+  ^cargo update
+  {
+    "deps": ($deps_info.hash),
+		"cargo_config": ($deps_info.cargo_config)
+    "cargo_lock": (open Cargo.lock | hash sha256)
+  } | to toml | save -f hashes.toml
+  ^nix flake update
+}
+
+def get-deps-info [] {
+  let temp_path = $"/tmp/backup_btrfs_deps_(random uuid)"
+
+  mkdir $temp_path
+	let deps_info = {
+		cargo_config: (cargo vendor $temp_path)
+		hash: (nix hash path $temp_path)
+	}
+
+  rm -r $temp_path
+
+  $deps_info
 }
 
 export def start [] {
