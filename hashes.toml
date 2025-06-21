@@ -14,5 +14,5 @@ tag = "v0.3.3"
 replace-with = "vendored-sources"
 
 [source.vendored-sources]
-directory = "/tmp/backup_btrfs_deps_840996c3-74d4-4868-a46b-f62b3fbf70df"'''
-cargo_lock = "c13fa327bb3b02af2bf2db4c0dba82fbe7937a6fecbe9834a1c74c26e072eb5c"
+directory = "/tmp/backup_btrfs_deps_723bb129-08c7-4cf6-af5a-d4cbcf6cc2bc"'''
+cargo_lock = "9e6bec4a029d9da5f67f461ca017185d01d55aad0580655660b379fc61a7ffe1"

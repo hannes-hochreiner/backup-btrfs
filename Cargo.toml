@@ -1,6 +1,6 @@
 [package]
 name = "backup-btrfs"
-version = "1.4.1"
+version = "1.4.2"
 authors = ["Hannes Hochreiner <hannes@hochreiner.net>"]
 edition = "2018"
 publish = false
@@ -22,4 +22,4 @@ policer = { git = "https://github.com/hannes-hochreiner/policer", tag = "v0.3.3"
 exec-rs = { git = "https://github.com/hannes-hochreiner/exec-rs", tag = "v2.0.1", features = [
   "mockall",
 ] }
-mockall = "0"
+mockall = "0.13.1"
