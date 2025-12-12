@@ -1,0 +1,4 @@
+{
+  "nix_hash": "1ckmlhlx9j7f6dr56lwi2kmsdjd2ryvsm0790i7sbhqzfrl22342",
+  "vendor_output": "[source.crates-io]\nreplace-with = \"vendored-sources\"\n\n[source.\"git+https://github.com/hannes-hochreiner/exec-rs?tag=v2.0.1\"]\ngit = \"https://github.com/hannes-hochreiner/exec-rs\"\ntag = \"v2.0.1\"\nreplace-with = \"vendored-sources\"\n\n[source.\"git+https://github.com/hannes-hochreiner/policer?tag=v0.3.3\"]\ngit = \"https://github.com/hannes-hochreiner/policer\"\ntag = \"v0.3.3\"\nreplace-with = \"vendored-sources\"\n\n[source.vendored-sources]\ndirectory = \"/tmp/backup_btrfs_deps_3e28748d-c820-4855-b70e-f306d1047ca5\""
+}

@@ -2,43 +2,32 @@
   description = "A backup tool based on btrfs snapshots";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.05";
-
-    rust-overlay = {
-      url = "github:oxalica/rust-overlay";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
   };
 
-  outputs = { self, nixpkgs, rust-overlay, ... }:
+  outputs = { self, nixpkgs, ... }:
     let
       system = "x86_64-linux";
 
       pkgs = import nixpkgs {
         inherit system;
-        overlays = [ (import rust-overlay) ];
-      };
-
-      rust-bin-custom = pkgs.rust-bin.stable.latest.default.override {
-        extensions = [ "rust-src" "rust-analyzer" ];
-        targets = [ "x86_64-unknown-linux-gnu" ];
       };
 
       backup-btrfs-cargo-toml = (builtins.fromTOML (builtins.readFile ./Cargo.toml));
-      hashes-toml = (builtins.fromTOML (builtins.readFile ./hashes.toml));
+      hashes-json = (builtins.fromJSON (builtins.readFile ./hashes.json));
+      inputs = with pkgs; [ rustc cargo gcc_multi ];
+      path = builtins.concatStringsSep ":" (builtins.map (input: "${input}/bin") inputs);
 
       backup-btrfs-deps = derivation {
         inherit system;
-        name = "${backup-btrfs-cargo-toml.package.name}-${hashes-toml.cargo_lock}-deps";
+        name = "${backup-btrfs-cargo-toml.package.name}-${hashes-json.nix_hash}-deps";
         builder = "${pkgs.nushell}/bin/nu";
-        buildInputs = with pkgs; [
-          rust-bin-custom
-        ];
+        PATH = path;
         args = [ ./builder.nu "vendor" ./. ];
 
         outputHashAlgo = "sha256";
         outputHashMode = "recursive";
-        outputHash = hashes-toml.deps;
+        outputHash = hashes-json.nix_hash;
         # outputHash = pkgs.lib.fakeHash;
       };
 
@@ -46,11 +35,8 @@
           inherit system;
           name = "${backup-btrfs-cargo-toml.package.name}-v${backup-btrfs-cargo-toml.package.version}";
           builder = "${pkgs.nushell}/bin/nu";
-          buildInputs = with pkgs; [
-            gcc_multi
-            rust-bin-custom
-          ];
-          args = [ ./builder.nu "build" ./. backup-btrfs-deps "backup-btrfs" hashes-toml.cargo_config ];
+          PATH = path;
+          args = [ ./builder.nu "build" ./. backup-btrfs-deps "backup-btrfs" hashes-json.vendor_output ];
       };
     in {
       packages.${system} = {
@@ -212,7 +198,8 @@
         # Extra inputs can be added here; cargo and rustc are provided by default.
         buildInputs = with pkgs; [
           # zellij
-          rust-bin-custom
+          rustc
+          cargo
         ];
       };
     };

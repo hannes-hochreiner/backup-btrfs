@@ -16,10 +16,9 @@ export def update [] {
 
   ^cargo update
   {
-    "deps": ($deps_info.hash),
-		"cargo_config": ($deps_info.cargo_config)
-    "cargo_lock": (open Cargo.lock | hash sha256)
-  } | to toml | save -f hashes.toml
+    "nix_hash": ($deps_info.hash),
+		"vendor_output": ($deps_info.cargo_config)
+  } | to json | save -f hashes.json
   ^nix flake update
 }
 
@@ -29,7 +28,7 @@ def get-deps-info [] {
   mkdir $temp_path
 	let deps_info = {
 		cargo_config: (cargo vendor $temp_path)
-		hash: (nix hash path $temp_path)
+		hash: (nix hash path --format nix32 $temp_path)
 	}
 
   rm -r $temp_path

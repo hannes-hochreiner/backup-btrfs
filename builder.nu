@@ -6,14 +6,13 @@ def main [] {}
 def "main vendor" [
   src: string
 ] {
-  augment_path
   print $env
-  let out = $env.out
-  let cargo_home = $"($out)/cargo_home"
+
+  let cargo_home = $"($env.TMP)/cargo_home"
+  mkdir $cargo_home
 
   cd $src
-  mkdir $cargo_home
-  CARGO_HOME=$cargo_home cargo vendor $out -q
+  CARGO_HOME=$cargo_home cargo vendor $env.out -q
 }
 
 def "main build" [
@@ -22,7 +21,6 @@ def "main build" [
   package: string
   cargo_config: string
 ] {
-  augment_path
   print $env
 
   let out = $env.out
@@ -43,11 +41,4 @@ def "main build" [
     rm -r $cargo_home
   }
   rm -r $cargo_target
-}
-
-def --env augment_path [] {
-  $env.PATH = [
-    ...$env.PATH
-    ...($env.buildInputs | split row -r '\s+' | each {|item| $"($item)/bin"})
-  ]
 }
